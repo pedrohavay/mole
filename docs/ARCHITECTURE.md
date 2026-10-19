@@ -77,11 +77,20 @@ encrypted text, so `bookfile` checks it on import and on open and fails
 with `ErrDRM`. The C API reports that kind of failure through
 `mole_last_error_kind`, and the app explains it in the user's language.
 
-MuPDF breaks a page before an element only below the top of the page, so a
-margin above the first element turns a leading page break into an empty
-first page. MOBI books often start with a page break and every FB2 section
-title asks for one, so `bookfile` adds a few styles for those two formats
-that take the margins away.
+An FB2 with a cover would also show an empty page between the cover and
+the text (see the next section), in the middle of its single chapter, so
+`bookfile` adds styles to FB2 books that remove the margins causing it.
+
+## Empty pages at the start of a chapter
+
+MuPDF breaks the page before an element only when the element is below the
+top of the page, and it moves the top margins of a chapter's first elements
+up to the chapter's root. A chapter whose first element breaks the page, a
+common style for chapter titles, therefore starts with an empty page. After
+each layout the shim checks the first pages of every chapter of a
+reflowable book and leaves out those that draw nothing; every page number
+in the core counts only the pages shown. CSS cannot do it, because the
+collapsed margin comes from the book's own elements.
 
 ## Light: how the text glows
 

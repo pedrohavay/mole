@@ -25,6 +25,8 @@ void md_close(md_doc *d);
 
 // md_layout reflows the document to pages of width x height points with a
 // base font size of em points. It returns the page count, or -1 on error.
+// Pages are those shown, here and in every other function: MuPDF's pages
+// less the blank pages that open a chapter of a reflowable document.
 int md_layout(md_doc *d, float width, float height, float em, char *err, int errlen);
 
 // md_render_layers draws a page into two 8-bit buffers owned by the caller,

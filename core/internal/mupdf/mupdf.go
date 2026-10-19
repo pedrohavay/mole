@@ -90,7 +90,10 @@ func (doc *Document) Close() {
 }
 
 // Layout reflows the document to pages of width x height points with a base
-// font size of em points and returns the number of pages.
+// font size of em points and returns the number of pages. A reflowable
+// document leaves out the blank pages MuPDF makes at the start of a chapter
+// whose first element breaks the page; every method numbers pages without
+// them.
 func (doc *Document) Layout(width, height, em float64) (int, error) {
 	msg := make([]byte, errLen)
 	n := C.md_layout(doc.d, C.float(width), C.float(height), C.float(em), cbuf(msg), errLen)

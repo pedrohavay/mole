@@ -182,14 +182,14 @@ func Inspect(path string) (Info, error) {
 }
 
 // formatCSS holds styles added over the books of a format. MuPDF breaks
-// the page before an element only when the element is below the top of
-// the page, and margins above it put it there: a MOBI that starts with a
-// page break, as many do, and every FB2, whose section titles break the
-// page, would start with an empty page, and an FB2 with a cover would have
-// empty pages after it. These styles remove the margins that cause it.
+// the page before an element only below the top of the page, and it moves
+// the top margin of a block's first child up to the block. After an FB2
+// cover, the margins around the image and above a section title's first
+// paragraph would put the title below the top of a page, and leave an
+// empty page between the cover and the text. (Empty pages that open a
+// chapter are left out by the mupdf package.)
 var formatCSS = map[Format]string{
-	MOBI: "body{margin-top:0 !important}",
-	FB2:  "FictionBook{margin-top:0 !important}title>p{margin-top:0 !important}coverpage>image{margin:0 !important}",
+	FB2: "title>p{margin-top:0 !important}coverpage>image{margin:0 !important}",
 }
 
 // Open opens the book at path with MuPDF. userCSS, when not empty, is
