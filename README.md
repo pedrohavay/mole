@@ -32,6 +32,11 @@ Mole is in early development and has no release builds yet.
 - MOBI, PRC, FB2 and plain text books as well. Text files get paragraphs
   and chapter headings, whether they are UTF-8 or Windows-1252, and a book
   protected by DRM is refused with a message that says so.
+- PDF books, with their pages as printed: scaled to the window, one or two
+  side by side, and zoomed and scrolled at will. Their text glows like any
+  book's, their drawings and tables follow the picture setting like
+  pictures, and a scanned page shows as a picture. A PDF that needs a
+  password is refused with a message that says so.
 - Pictures in their own colors, never brighter than SDR white. At night
   diagrams are inverted so their lines glow while photos keep their colors;
   pictures can also show as printed, or not at all. Click one to see it full
@@ -91,8 +96,8 @@ notarized releases.
 
 ## Usage
 
-Add books with File > Add Books (⌘O), by dropping EPUB, MOBI, PRC, FB2 or
-TXT files on the library, or with Open With > Mole in Finder. Mole copies
+Add books with File > Add Books (⌘O), by dropping EPUB, MOBI, PRC, FB2,
+TXT or PDF files on the library, or with Open With > Mole in Finder. Mole copies
 each book into its library, so moving or deleting the original file does
 not break anything. A file added again after it changed, or after it was
 renamed, updates its book instead of adding a second one. Double-click a
@@ -121,6 +126,13 @@ keeps the book's colors. Settings > Reading has the same options.
 Click a picture to open it full size, in its colors. Pinch or press ⌘+ and
 ⌘− to zoom, ⌘0 to fit it to the window, and Esc to close it.
 
+A PDF keeps the fonts, spacing and margins it was printed with, so the Aa
+button offers its zoom instead of the text settings. Press + and −, ⌘+ and
+⌘−, or pinch to zoom, and pick Fit Page or Fit Width from the zoom in the
+status bar or the View menu. Scroll a page larger than the window with the
+trackpad or the mouse wheel; Space and Page Down scroll it a screen at a
+time and turn the page at its bottom.
+
 Drag across the text to select it. The bar above the selection highlights it
 in a color, adds a note, copies it, or searches the book for it. The side
 panel (⌥⌘C) holds the table of contents, the bookmarks, the notes and the
@@ -140,11 +152,11 @@ While reading:
 
 | Keys | Action |
 |------|--------|
-| → or Space or Page Down | Next page |
-| ← or ⇧Space or Page Up | Previous page |
+| → or Space or Page Down | Next page; in a zoomed PDF, Space and Page Down scroll down first |
+| ← or ⇧Space or Page Up | Previous page; in a zoomed PDF, ⇧Space and Page Up scroll up first |
 | Home, End | Beginning or end of the book |
 | ↑, ↓ | Brighter or dimmer text |
-| +, − | Bigger or smaller text |
+| +, − | Bigger or smaller text, or zoom a PDF in or out |
 | E | Turn EDR on or off |
 | C | Next text color |
 | T or ⌥⌘C | Show or hide the side panel |
