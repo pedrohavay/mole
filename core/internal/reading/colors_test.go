@@ -193,3 +193,46 @@ func TestPictureAt(t *testing.T) {
 		t.Error("PicturePixels past the last image of the page: got nil error")
 	}
 }
+
+// TestDrawing checks a transparent SVG drawing, an image that MuPDF scales
+// rather than decodes.
+func TestDrawing(t *testing.T) {
+	s := openColors(t)
+	frame := func(r, g, b, a int) bool { return a > 250 && min(r, g, b) > 240 }
+	dark := func(r, g, b, a int) bool { return a > 250 && max(r, g, b) < 20 }
+	// At night the black frame glows on dark paper; in original colors it
+	// is black on white. The session reuses its layers, so each is
+	// measured before the next render.
+	renderChapter(t, s, 3, Style{})
+	night, _ := s.ImageLayer()
+	if lit, paper := pixels(night, frame), pixels(night, dark); lit == 0 || paper < 4*lit {
+		t.Errorf("drawing at night: %d light and %d dark pixels; want a light frame on dark paper", lit, paper)
+	}
+	renderChapter(t, s, 3, Style{Pictures: mupdf.PicturesOriginal})
+	original, _ := s.ImageLayer()
+	if paper, ink := pixels(original, frame), pixels(original, dark); ink == 0 || paper < 4*ink {
+		t.Errorf("drawing in original colors: %d white and %d black pixels; want a black frame on white paper", paper, ink)
+	}
+
+	img, err := s.PicturePixels(s.Page(), 0)
+	if err != nil {
+		t.Fatalf("PicturePixels(drawing) error: %v", err)
+	}
+	if b := img.Bounds(); max(b.Dx(), b.Dy()) != MaxPictureSide {
+		t.Errorf("drawing is %v, want %d pixels on its longer side", b, MaxPictureSide)
+	}
+	if paper := img.RGBAAt(2, 2); paper.R < 250 || paper.G < 250 {
+		t.Errorf("drawing corner = %v, want white paper behind the transparent background", paper)
+	}
+	// Drawn at that size, not scaled up from a small bitmap, the frame's
+	// edges are sharp: few gray pixels between black and white.
+	gray := 0
+	for x := range img.Bounds().Dx() / 4 {
+		if v := img.RGBAAt(x, img.Bounds().Dy()/2).R; v > 30 && v < 225 {
+			gray++
+		}
+	}
+	if gray > 6 {
+		t.Errorf("drawing: %d gray pixels across the frame's edges, want sharp edges", gray)
+	}
+}

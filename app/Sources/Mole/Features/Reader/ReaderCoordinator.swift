@@ -26,7 +26,11 @@ final class ReaderCoordinator {
     /// OnPicture opens the viewer on a picture that was clicked.
     var onPicture: ((PagePicture) -> Void)?
     /// ShowsPicture is set while the picture viewer covers the page.
-    var showsPicture = false
+    var showsPicture = false {
+        // The viewer sets its own cursor; the next move over the page sets
+        // the page's again.
+        didSet { overPicture = false }
+    }
     /// OverPicture is set while the pointer shows a picture can be opened.
     private var overPicture = false
 

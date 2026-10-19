@@ -12,7 +12,8 @@ import (
 // Colors returns a short book that exercises color: a heading, words and a
 // code listing in colors, gray and near-black text that should take the
 // reader's tint, white text on a dark box, a bright color photograph, a
-// diagram on white paper and line art on a transparent background.
+// diagram on white paper, line art on a transparent background and a
+// drawing in SVG, also transparent.
 func Colors(t testing.TB) Book {
 	t.Helper()
 	return Book{
@@ -32,11 +33,13 @@ func Colors(t testing.TB) Book {
 			`<p>A photograph:</p><img src="photo.jpg" style="width:300pt"/>`,
 			`<p>A diagram:</p><img src="diagram.png" style="width:300pt"/>
 <p>Line art on a transparent background:</p><img src="lines.png" style="width:240pt"/>`,
+			`<p>A drawing in SVG:</p><img src="drawing.svg" style="width:200pt"/>`,
 		},
 		Files: map[string][]byte{
 			"photo.jpg":   JPEG(t, Photo()),
 			"diagram.png": PNG(t, Diagram()),
 			"lines.png":   PNG(t, LineArt()),
+			"drawing.svg": []byte(Drawing),
 		},
 	}
 }
@@ -112,6 +115,13 @@ func LineArt() image.Image {
 	}
 	return img
 }
+
+// Drawing is an SVG drawing of 200 x 100 units on a transparent
+// background: a black frame around a red disc.
+const Drawing = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">
+<rect x="10" y="10" width="180" height="80" fill="none" stroke="black" stroke-width="6"/>
+<circle cx="100" cy="50" r="20" fill="#CC0000"/>
+</svg>`
 
 // JPEG encodes img at a quality typical of books.
 func JPEG(t testing.TB, img image.Image) []byte {

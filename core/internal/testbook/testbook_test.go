@@ -16,7 +16,7 @@ func TestColors(t *testing.T) {
 		t.Fatalf("open %s: %v", path, err)
 	}
 	defer r.Close()
-	want := map[string]bool{"OEBPS/photo.jpg": false, "OEBPS/diagram.png": false, "OEBPS/lines.png": false}
+	want := map[string]bool{"OEBPS/photo.jpg": false, "OEBPS/diagram.png": false, "OEBPS/lines.png": false, "OEBPS/drawing.svg": false}
 	for _, f := range r.File {
 		if _, ok := want[f.Name]; ok {
 			want[f.Name] = true

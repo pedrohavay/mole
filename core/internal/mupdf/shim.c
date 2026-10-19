@@ -929,11 +929,15 @@ unsigned char *md_image_pixels(md_doc *d, int page_number, int index, int max_si
     fz_page *page = NULL;
     image_finder *f = NULL;
     fz_pixmap *pix = NULL;
+    fz_pixmap *drawing = NULL;
+    fz_image *sharp = NULL;
     fz_device *dev = NULL;
     unsigned char *out = NULL;
     fz_var(page);
     fz_var(f);
     fz_var(pix);
+    fz_var(drawing);
+    fz_var(sharp);
     fz_var(dev);
     fz_var(out);
     fz_try(ctx) {
@@ -961,8 +965,17 @@ unsigned char *md_image_pixels(md_doc *d, int page_number, int index, int max_si
         fz_clear_pixmap_with_value(ctx, pix, 255); // opaque white paper
         fz_matrix ctm = fz_concat(f->ctm, fz_translate(-box.x0, -box.y0));
         ctm = fz_concat(ctm, fz_scale((float)w / bw, (float)h / bh));
+        fz_image *image = f->image;
+        if (image->scalable) {
+            // MuPDF draws a scalable image at its natural size and scales
+            // the pixels, so the drawing is asked for at the final size.
+            int l2factor = 0;
+            drawing = image->get_pixmap(ctx, image, NULL, w, h, &l2factor);
+            sharp = fz_new_image_from_pixmap(ctx, drawing, NULL);
+            image = sharp;
+        }
         dev = fz_new_draw_device(ctx, fz_identity, pix);
-        fz_fill_image(ctx, dev, f->image, ctm, 1, fz_default_color_params);
+        fz_fill_image(ctx, dev, image, ctm, 1, fz_default_color_params);
         fz_close_device(ctx, dev);
         size_t row = (size_t)w * 4;
         out = malloc(row * (size_t)h);
@@ -979,6 +992,8 @@ unsigned char *md_image_pixels(md_doc *d, int page_number, int index, int max_si
     }
     fz_always(ctx) {
         fz_drop_device(ctx, dev);
+        fz_drop_image(ctx, sharp);
+        fz_drop_pixmap(ctx, drawing);
         fz_drop_pixmap(ctx, pix);
         if (f != NULL) {
             free(f->boxes);
