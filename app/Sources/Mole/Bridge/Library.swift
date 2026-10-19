@@ -32,7 +32,8 @@ final class Library: @unchecked Sendable {
 
     /// Adds the book at path and returns its book id. Adding a file that is
     /// already in the library returns the existing book unchanged. A book
-    /// protected by DRM fails with a CoreError of kind drm.
+    /// protected by DRM fails with a CoreError of kind drm, and a PDF that
+    /// needs a password with one of kind password.
     @discardableResult
     func importBook(at path: String) throws -> Int64 {
         let id = CoreCall.withCString(path) { mole_library_import(handle, $0) }

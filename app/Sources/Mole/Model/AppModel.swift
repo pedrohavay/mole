@@ -244,7 +244,7 @@ final class AppModel {
             // A file imported again may have changed, cover included.
             forgetCovers(of: result.added)
             reload()
-            if let problems = importProblems(failed: result.failed, protected: result.protected) {
+            if let problems = importProblems(failed: result.failed, protected: result.protected, locked: result.locked) {
                 alert(L10n.text("import.failed.title"), problems)
             }
             done(result.added)
@@ -252,15 +252,18 @@ final class AppModel {
     }
 
     /// Returns what went wrong adding books, a line for the files that could
-    /// not be read and one for the books protected by DRM, or nil when
-    /// nothing did.
-    func importProblems(failed: [String], protected: [String]) -> String? {
+    /// not be read, one for the books protected by DRM and one for the PDFs
+    /// that need a password, or nil when nothing did.
+    func importProblems(failed: [String], protected: [String], locked: [String] = []) -> String? {
         var lines: [String] = []
         if !failed.isEmpty {
             lines.append(L10n.format("import.failed.detail", failed.joined(separator: ", ")))
         }
         if !protected.isEmpty {
             lines.append(L10n.format("import.drm.detail", protected.joined(separator: ", ")))
+        }
+        if !locked.isEmpty {
+            lines.append(L10n.format("import.password.detail", locked.joined(separator: ", ")))
         }
         return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
@@ -406,7 +409,13 @@ final class AppModel {
         settings.level = (settings.level * factor).clamped(to: ReaderSettings.levels)
     }
 
+    /// Makes the text bigger or smaller by step points; in a book of fixed
+    /// pages, whose text keeps its size, it zooms in or out a step instead.
     func adjustFontSize(by step: Double) {
+        if let tab = activeTab, tab.isFixedLayout {
+            tab.zoom(by: step > 0 ? 1 : -1)
+            return
+        }
         settings.fontSize = (settings.fontSize + step).clamped(to: ReaderSettings.fontSizes)
     }
 
@@ -519,11 +528,13 @@ final class AppModel {
 /// one at a time on a library handle used by nothing else.
 final class Importer: @unchecked Sendable {
     /// Result lists the books added and the names of the files that failed:
-    /// those protected by DRM apart from the rest.
+    /// those protected by DRM and the PDFs that need a password apart from
+    /// the rest.
     struct Result: Sendable {
         var added: [Int64] = []
         var failed: [String] = []
         var protected: [String] = []
+        var locked: [String] = []
     }
 
     private let path: String
@@ -571,6 +582,8 @@ final class Importer: @unchecked Sendable {
                 result.added.append(try library.importBook(at: path))
             } catch let error as CoreError where error.kind == .drm {
                 result.protected.append((path as NSString).lastPathComponent)
+            } catch let error as CoreError where error.kind == .password {
+                result.locked.append((path as NSString).lastPathComponent)
             } catch {
                 result.failed.append((path as NSString).lastPathComponent)
                 NSLog("Mole: cannot import %@: %@", path, error.localizedDescription)

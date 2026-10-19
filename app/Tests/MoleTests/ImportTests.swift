@@ -42,6 +42,29 @@ final class ImportTests: XCTestCase {
         }
     }
 
+    func testPDF() throws {
+        let library = try Library(path: directory.appendingPathComponent("library.db").path)
+        let book = directory.appendingPathComponent("paper.pdf")
+        try PDFFixture.data().write(to: book)
+        let id = try library.importBook(at: book.path)
+        let added = try XCTUnwrap(try library.books().first { $0.id == id })
+        XCTAssertEqual(added.title, "Fixed Pages")
+        XCTAssertEqual(added.author, "Ada Burrow")
+        XCTAssertNotNil(library.cover(of: id))
+        XCTAssertTrue(BookFiles.accepts(book.path))
+    }
+
+    func testPasswordPDFFails() throws {
+        let library = try Library(path: directory.appendingPathComponent("library.db").path)
+        let book = directory.appendingPathComponent("Locked.pdf")
+        try PDFFixture.data(encrypted: true).write(to: book)
+        XCTAssertThrowsError(try library.importBook(at: book.path)) { error in
+            let core = error as? CoreError
+            XCTAssertEqual(core?.kind, .password)
+            XCTAssertEqual(core?.errorDescription, L10n.text("error.book.password"))
+        }
+    }
+
     func testTextBook() throws {
         let library = try Library(path: directory.appendingPathComponent("library.db").path)
         let book = directory.appendingPathComponent("notes.txt")

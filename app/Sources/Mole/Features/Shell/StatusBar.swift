@@ -34,6 +34,9 @@ struct StatusBar: View {
                         .lineLimit(1)
                         .help(L10n.format("time.left.book", TimeLeft.format(left.book)))
                 }
+                if let viewport = tab.state.viewport {
+                    ZoomMenu(tab: tab, viewport: viewport)
+                }
                 readAloudButtons
             } else {
                 Text(L10n.bookCount(model.books.count))

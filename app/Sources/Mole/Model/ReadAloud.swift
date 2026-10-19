@@ -106,7 +106,7 @@ final class ReadAloud {
         case .speaking where bookID == tab.id: pause()
         case .paused where bookID == tab.id: resume()
         default:
-            guard let anchor = tab.selection?.start ?? tab.visibleRange?.start else { return }
+            guard let anchor = tab.selection?.start ?? tab.topOfScreen else { return }
             tab.clearSelection()
             start(tab, from: anchor)
         }
@@ -194,9 +194,10 @@ final class ReadAloud {
         }
     }
 
-    /// Turns to the screen that holds anchor, when it is not on screen.
+    /// Turns to the screen that holds anchor, or scrolls fixed pages larger
+    /// than the view to it, when it is not on screen.
     private func show(_ anchor: Anchor) {
-        guard let tab, let visible = tab.visibleRange, !visible.contains(anchor) else { return }
+        guard let tab, !tab.isOnScreen(anchor) else { return }
         tab.go(to: anchor)
     }
 

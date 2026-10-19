@@ -145,12 +145,13 @@ struct ReaderCanvas: NSViewRepresentable {
         let view = EDRMetalView()
         let coordinator = context.coordinator
         view.onResize = { [weak view] in if let view { coordinator.scheduleLayout(view) } }
-        view.onKey = { coordinator.handle($0) }
+        view.onKey = { [weak view] in coordinator.handle($0, in: view) }
         view.onMouse = { [weak view] step, point, event in
             if let view { coordinator.mouse(step, at: point, event: event, in: view) }
         }
         view.onHover = { coordinator.hover(at: $0) }
         view.onScroll = { coordinator.scroll($0) }
+        view.onMagnify = { coordinator.magnify($0) }
         view.onMenu = { coordinator.menu(at: $0) }
         view.onCopy = { coordinator.model.copySelection() }
         view.onLookUp = { coordinator.lookUp(at: $0) }

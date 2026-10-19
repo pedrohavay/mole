@@ -1,14 +1,15 @@
 import Foundation
 import UniformTypeIdentifiers
 
-/// BookFiles names the files Mole reads, EPUB, MOBI and PRC, FB2 and plain
-/// text, and sorts paths the user hands to Mole into book files and folders.
+/// BookFiles names the files Mole reads, EPUB, MOBI and PRC, FB2, plain text
+/// and PDF, and sorts paths the user hands to Mole into book files and
+/// folders.
 /// The core tells a book's format from its content; the extensions choose
 /// which files the open panel, a drop and the command line take, so this is
 /// the one place in the app that says which files are books.
 enum BookFiles {
     /// Extensions are the file name extensions of books, in lowercase.
-    static let extensions: Set<String> = ["epub", "mobi", "prc", "fb2", "txt", "text"]
+    static let extensions: Set<String> = ["epub", "mobi", "prc", "fb2", "txt", "text", "pdf"]
 
     /// Returns whether path names a book by its extension.
     static func accepts(_ path: String) -> Bool {

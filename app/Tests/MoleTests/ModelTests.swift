@@ -28,8 +28,8 @@ final class LaunchArgumentsTests: XCTestCase {
 
     func testParseFormats() {
         let parsed = LaunchArguments.parse(["Mole", "/a/b.mobi", "/a/c.PRC", "/a/d.fb2", "/a/e.txt", "/a/f.text",
-                                            "/a/g.pdf", "/a/h.azw", "/a/notes"])
-        XCTAssertEqual(parsed.books, ["/a/b.mobi", "/a/c.PRC", "/a/d.fb2", "/a/e.txt", "/a/f.text"])
+                                            "/a/g.PDF", "/a/h.azw", "/a/notes"])
+        XCTAssertEqual(parsed.books, ["/a/b.mobi", "/a/c.PRC", "/a/d.fb2", "/a/e.txt", "/a/f.text", "/a/g.PDF"])
     }
 
     func testSmokeTest() {

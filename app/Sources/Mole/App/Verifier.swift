@@ -9,8 +9,9 @@ import SwiftUI
 /// each mode, the picture viewer, the reader in several fonts, margins and
 /// spacings, the Text popover and the Settings window, selects and
 /// highlights a passage, searches the book for the longest word of the
-/// selection, and quits. With `--verify-folder tree` it checks folder
-/// imports and collections instead (see verifyFolders). It reports to
+/// selection, and quits. A first book of fixed pages, such as a PDF, gets
+/// the checks of verifyPDF instead. With `--verify-folder tree` it checks
+/// folder imports and collections instead (see verifyFolders). It reports to
 /// standard error. Captures are 8-bit, so EDR values above SDR white come
 /// out clipped.
 @MainActor
@@ -38,7 +39,13 @@ struct Verifier {
                     }
                     guard let book = model.books.first else { return NSApp.terminate(nil) }
                     model.open(book)
-                    after(2.0) { readBook() }
+                    after(2.0) {
+                        if model.activeTab?.isFixedLayout == true {
+                            verifyPDF()
+                        } else {
+                            readBook()
+                        }
+                    }
                 }
             }
         }
@@ -580,7 +587,7 @@ struct Verifier {
 
     /// Captures view into name, in a window of its own with the app's
     /// environment, then goes on with next.
-    private func capture<Content: View>(_ name: String, view: Content, next: @escaping @MainActor () -> Void) {
+    func capture<Content: View>(_ name: String, view: Content, next: @escaping @MainActor () -> Void) {
         let host = NSHostingView(rootView: view.environment(model).environment(\.accent, model.accent)
             .preferredColorScheme(.dark))
         let window = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.titled],
@@ -598,7 +605,7 @@ struct Verifier {
 
     /// Clicks point of the page, in view points from the top left, as the
     /// page's own mouse handling sees it.
-    private func click(at point: CGPoint, in view: EDRMetalView) {
+    func click(at point: CGPoint, in view: EDRMetalView) {
         guard let window = view.window else { return }
         let location = view.convert(NSPoint(x: point.x, y: view.bounds.height - point.y), to: nil)
         for (type, step) in [(NSEvent.EventType.leftMouseDown, EDRMetalView.MouseStep.down), (.leftMouseUp, .up)] {
@@ -611,7 +618,7 @@ struct Verifier {
     }
 
     /// Presses a key in window through the app, menus included.
-    private func press(_ key: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags, in window: NSWindow) {
+    func press(_ key: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags, in window: NSWindow) {
         if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
                                         windowNumber: window.windowNumber, context: nil, characters: key,
                                         charactersIgnoringModifiers: key, isARepeat: false, keyCode: keyCode) {
@@ -619,7 +626,7 @@ struct Verifier {
         }
     }
 
-    private func finish() {
+    func finish() {
         let main = mainWindow
         reportMenus()
         NSApp.orderFrontStandardAboutPanel(nil)

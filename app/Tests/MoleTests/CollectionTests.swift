@@ -92,7 +92,7 @@ final class CollectionDecodingTests: XCTestCase {
     }
 
     func testFolderImportResult() throws {
-        let json = #"{"folder":1,"found":3,"added":[9],"updated":[],"missing":[2],"failed":[{"path":"/x.epub","error":"not a zip","drm":false},{"path":"/y.mobi","error":"protected","drm":true}]}"#
+        let json = #"{"folder":1,"found":3,"added":[9],"updated":[],"missing":[2],"failed":[{"path":"/x.epub","error":"not a zip","drm":false,"password":false},{"path":"/y.mobi","error":"protected","drm":true,"password":false},{"path":"/z.pdf","error":"locked","drm":false,"password":true}]}"#
         let result = try JSONDecoder().decode(FolderImportResult.self, from: Data(json.utf8))
         XCTAssertEqual(result.added, [9])
         XCTAssertEqual(result.missing, [2])
@@ -100,6 +100,7 @@ final class CollectionDecodingTests: XCTestCase {
         let names = AppModel.failedNames(result.failed)
         XCTAssertEqual(names.failed, ["x.epub"])
         XCTAssertEqual(names.protected, ["y.mobi"])
+        XCTAssertEqual(names.locked, ["z.pdf"])
     }
 
     func testVerifyFolderArgument() {

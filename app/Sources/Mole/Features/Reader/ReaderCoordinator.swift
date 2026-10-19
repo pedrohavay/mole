@@ -201,14 +201,19 @@ final class ReaderCoordinator {
 
     // MARK: Input
 
-    /// Handles a key press in the page; it reports whether the key was used.
-    func handle(_ event: NSEvent) -> Bool {
+    /// Handles a key press in view; it reports whether the key was used.
+    func handle(_ event: NSEvent, in view: EDRMetalView? = nil) -> Bool {
         guard let tab, event.modifierFlags.isDisjoint(with: [.command, .control, .option]) else { return false }
         let shift = event.modifierFlags.contains(.shift)
+        // Within fixed pages taller than the view, Space and the page keys
+        // scroll a screen before they turn the page.
+        let screen = (view?.bounds.height ?? 0) * 0.85
         switch (event.keyCode, event.charactersIgnoringModifiers?.lowercased() ?? "") {
-        case (KeyCode.right, _), (KeyCode.pageDown, _): tab.turn(1)
-        case (KeyCode.space, _): tab.turn(shift ? -1 : 1)
-        case (KeyCode.left, _), (KeyCode.pageUp, _): tab.turn(-1)
+        case (KeyCode.right, _): tab.turn(1)
+        case (KeyCode.pageDown, _): tab.page(1, screen: screen)
+        case (KeyCode.space, _): tab.page(shift ? -1 : 1, screen: screen)
+        case (KeyCode.left, _): tab.turn(-1)
+        case (KeyCode.pageUp, _): tab.page(-1, screen: screen)
         case (KeyCode.home, _): tab.goToStart()
         case (KeyCode.end, _): tab.goToEnd()
         case (KeyCode.up, _): model.adjustLevel(by: 1.25)
@@ -332,15 +337,34 @@ final class ReaderCoordinator {
     }
 
     /// Turns a page per trackpad swipe or mouse wheel notch. Content follows
-    /// the scroll: moving it left or up shows the next page.
+    /// the scroll: moving it left or up shows the next page. Fixed pages
+    /// larger than the view scroll instead, except that a sideways swipe
+    /// still turns the page when they do not scroll sideways.
     func scroll(_ event: NSEvent) {
         guard let tab else { return }
+        if let viewport = tab.state.viewport, viewport.isScrollable {
+            // A wheel notch moves a few lines.
+            let step = event.hasPreciseScrollingDeltas ? 1.0 : 16.0
+            let dx = event.scrollingDeltaX * step, dy = event.scrollingDeltaY * step
+            if abs(dy) >= abs(dx) || viewport.maxX > 0.5 {
+                tab.pan(dx: -dx, dy: -dy)
+                return
+            }
+        }
         guard event.hasPreciseScrollingDeltas else {
             let delta = event.scrollingDeltaY != 0 ? event.scrollingDeltaY : event.scrollingDeltaX
             if delta != 0 { tab.turn(delta < 0 ? 1 : -1) }
             return
         }
         if let screens = swipe.feed(event) { tab.turn(screens) }
+    }
+}
+
+extension ReaderCoordinator {
+    /// Zooms fixed pages with a trackpad pinch.
+    func magnify(_ event: NSEvent) {
+        guard let tab, let viewport = tab.state.viewport else { return }
+        tab.zoom(scale: viewport.scale * (1 + event.magnification))
     }
 }
 

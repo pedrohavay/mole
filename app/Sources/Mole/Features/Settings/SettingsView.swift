@@ -148,6 +148,9 @@ struct ReadingSettings: View {
                 Text(L10n.text("settings.text.note"))
                     .font(Theme.caption)
                     .foregroundStyle(Theme.secondary)
+                Text(L10n.text("settings.text.fixedNote"))
+                    .font(Theme.caption)
+                    .foregroundStyle(Theme.secondary)
                 Picker(L10n.text("text.stroke"), selection: $model.settings.gamma) {
                     ForEach(Stroke.all, id: \.gamma) { Text($0.name).tag($0.gamma) }
                 }
