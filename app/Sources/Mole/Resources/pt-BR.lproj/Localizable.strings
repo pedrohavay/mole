@@ -133,6 +133,20 @@
 "images.dim" = "Suaves";
 "images.off" = "Ocultas";
 "images.full" = "Claras";
+"text.font" = "Fonte";
+"text.paragraphs" = "Parágrafos";
+"text.lineSpacing" = "Espaçamento entre linhas";
+"text.alignment" = "Alinhamento";
+"text.margins" = "Margens";
+"font.book" = "Fontes do Livro";
+"spacing.compact" = "Compacto";
+"spacing.normal" = "Normal";
+"spacing.relaxed" = "Amplo";
+"alignment.left" = "À Esquerda";
+"alignment.justified" = "Justificado";
+"margins.narrow" = "Estreitas";
+"margins.normal" = "Normais";
+"margins.wide" = "Largas";
 
 /* Bookmarks, highlights and notes */
 "bookmark.add" = "Adicionar Marcador";
@@ -218,6 +232,7 @@
 "settings.language" = "Idioma";
 "settings.language.note" = "O Mole segue o idioma definido em Ajustes do Sistema › Geral › Idioma e Região. Há inglês e português do Brasil.";
 "settings.text" = "Texto";
+"settings.text.note" = "A opção Fontes do Livro mantém as fontes que vêm com o livro. O código continua numa fonte monoespaçada, qualquer que seja a fonte. O Mole não separa as palavras em sílabas, então linhas justificadas podem deixar espaços largos entre elas.";
 "settings.light" = "Luz";
 "settings.light.note" = "O brilho é uma fração do que a tela consegue mostrar acima do branco SDR neste momento. Sem EDR, as letras param no branco SDR.";
 "settings.shortcuts.reading" = "Durante a leitura";

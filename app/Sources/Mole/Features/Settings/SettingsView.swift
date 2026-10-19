@@ -114,6 +114,26 @@ private struct ReadingSettings: View {
                         Text(L10n.format("text.points", Int(model.settings.fontSize))).monospacedDigit()
                     }
                 }
+                Picker(L10n.text("text.font"), selection: $model.settings.font) {
+                    ForEach([""] + ReaderFont.installed, id: \.self) { family in
+                        Text(ReaderFont.name(family))
+                            .font(family.isEmpty ? Theme.body : ReaderFont.sample(family, size: 13))
+                            .tag(family)
+                    }
+                }
+                Picker(L10n.text("text.lineSpacing"), selection: $model.settings.lineSpacing) {
+                    ForEach(LineSpacing.allCases) { Text($0.title).tag($0) }
+                }
+                Picker(L10n.text("text.alignment"), selection: $model.settings.justify) {
+                    Text(L10n.text("alignment.left")).tag(false)
+                    Text(L10n.text("alignment.justified")).tag(true)
+                }
+                Picker(L10n.text("text.margins"), selection: $model.settings.margins) {
+                    ForEach(PageMargins.allCases) { Text($0.title).tag($0) }
+                }
+                Text(L10n.text("settings.text.note"))
+                    .font(Theme.caption)
+                    .foregroundStyle(Theme.secondary)
                 Picker(L10n.text("text.stroke"), selection: $model.settings.gamma) {
                     ForEach(Stroke.all, id: \.gamma) { Text($0.name).tag($0.gamma) }
                 }
@@ -140,7 +160,7 @@ private struct ReadingSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 400)
+        .frame(height: 580)
     }
 }
 

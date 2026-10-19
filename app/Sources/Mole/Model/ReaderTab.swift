@@ -63,8 +63,10 @@ final class ReaderTab: Identifiable {
     // MARK: Layout and pages
 
     /// Lays the book out for a view; see Session.layout.
-    func layout(width: Double, height: Double, scale: Double, fontSize: Double, spread: Spread) throws {
-        try session.layout(width: width, height: height, scale: scale, fontSize: fontSize, spread: spread)
+    func layout(width: Double, height: Double, scale: Double, fontSize: Double, spread: Spread,
+                style: TextStyle) throws {
+        try session.layout(width: width, height: height, scale: scale, fontSize: fontSize, spread: spread,
+                           style: style)
         chapters = (try? session.chapters()) ?? []
         refresh()
     }

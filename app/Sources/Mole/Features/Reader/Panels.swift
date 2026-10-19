@@ -41,7 +41,8 @@ struct LightPanel: View {
     }
 }
 
-/// TextPanel holds the text size, the stroke weight and the page spread.
+/// TextPanel holds the text controls: the size, the font, the paragraphs,
+/// the margins, the stroke weight, the page spread and the pictures.
 @MainActor
 struct TextPanel: View {
     @Environment(AppModel.self) private var model
@@ -66,19 +67,44 @@ struct TextPanel: View {
                     .font(Theme.digits)
                     .foregroundStyle(Theme.secondary)
             }
-            Text(L10n.text("text.stroke")).font(Theme.label).foregroundStyle(Theme.secondary)
+            label("text.font")
+            FontGrid(selection: $model.settings.font)
+            label("text.paragraphs")
+            HStack(spacing: Theme.Space.s) {
+                Picker(L10n.text("text.lineSpacing"), selection: $model.settings.lineSpacing) {
+                    ForEach(LineSpacing.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                Picker(L10n.text("text.alignment"), selection: $model.settings.justify) {
+                    Label(L10n.text("alignment.left"), systemImage: "text.alignleft").tag(false)
+                    Label(L10n.text("alignment.justified"), systemImage: "text.justify").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelStyle(.iconOnly)
+                .labelsHidden()
+                .fixedSize()
+                .help(L10n.text("text.alignment"))
+            }
+            label("text.margins")
+            Picker(L10n.text("text.margins"), selection: $model.settings.margins) {
+                ForEach(PageMargins.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            label("text.stroke")
             Picker(L10n.text("text.stroke"), selection: $model.settings.gamma) {
                 ForEach(Stroke.all, id: \.gamma) { Text($0.name).tag($0.gamma) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            Text(L10n.text("text.spread")).font(Theme.label).foregroundStyle(Theme.secondary)
+            label("text.spread")
             Picker(L10n.text("text.spread"), selection: $model.settings.spread) {
                 ForEach(Spread.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            Text(L10n.text("images.title")).font(Theme.label).foregroundStyle(Theme.secondary)
+            label("images.title")
             Picker(L10n.text("images.title"), selection: $model.settings.images) {
                 ForEach(ImageLight.allCases) { Text($0.title).tag($0) }
             }
@@ -86,6 +112,53 @@ struct TextPanel: View {
             .labelsHidden()
         }
         .padding(Theme.Space.l)
-        .frame(width: 300)
+        .frame(width: 320)
+    }
+
+    private func label(_ key: String) -> some View {
+        Text(L10n.text(key)).font(Theme.label).foregroundStyle(Theme.secondary)
+    }
+}
+
+/// FontGrid offers the book's own fonts and the installed fonts the core can
+/// set the text in, each name shown in its own font.
+@MainActor
+struct FontGrid: View {
+    @Environment(\.accent) private var accent
+    @Binding var selection: String
+
+    private let columns = [GridItem(.flexible(), spacing: Theme.Space.xs + 2),
+                           GridItem(.flexible(), spacing: Theme.Space.xs + 2)]
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: Theme.Space.xs + 2) {
+            ForEach([""] + ReaderFont.installed, id: \.self) { family in
+                tile(family)
+            }
+        }
+    }
+
+    private func tile(_ family: String) -> some View {
+        let selected = family == selection
+        return Button {
+            selection = family
+        } label: {
+            Text(ReaderFont.name(family))
+                .font(family.isEmpty ? Theme.body : ReaderFont.sample(family, size: 14))
+                .foregroundStyle(selected ? .primary : .secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, Theme.Space.xs)
+                .frame(maxWidth: .infinity)
+                .frame(height: 28)
+                .background(RoundedRectangle(cornerRadius: Theme.Radius.s)
+                    .fill(selected ? accent.opacity(0.22) : Theme.hover))
+                .overlay(RoundedRectangle(cornerRadius: Theme.Radius.s)
+                    .strokeBorder(selected ? accent : Theme.border))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(ReaderFont.name(family))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

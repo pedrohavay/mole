@@ -1,10 +1,12 @@
 import AppKit
+import SwiftUI
 
 /// Verifier is a development aid, run with `--verify-dir dir`: it captures
 /// the library, checks that the title bar row takes clicks, opens the first
-/// book, turns some pages, captures the reader and the Settings window, and
-/// quits. It reports to standard error. Captures are 8-bit, so EDR values
-/// above SDR white come out clipped.
+/// book, turns some pages, captures the reader in several fonts, margins and
+/// spacings, the Text popover and the Settings window, and quits. It reports
+/// to standard error. Captures are 8-bit, so EDR values above SDR white come
+/// out clipped.
 @MainActor
 struct Verifier {
     let model: AppModel
@@ -95,8 +97,117 @@ struct Verifier {
             model.showPanel(.notes)
             after(0.5) {
                 capture("notes.png")
-                finish()
+                typography()
             }
+        }
+    }
+
+    /// Look is a way to set the text that the typography check captures.
+    private struct Look {
+        let name: String
+        let change: (inout ReaderSettings) -> Void
+    }
+
+    /// Shows a search hit well into the book and highlights a passage near
+    /// the top of its screen, then sets the text in other fonts, margins and
+    /// spacings,
+    /// capturing each look of the page. For each it reports whether the
+    /// reader stayed at the same text and whether the highlight and the hit
+    /// still lie over their text. The settings are put back afterwards.
+    private func typography() {
+        guard let tab = model.activeTab, let window = mainWindow,
+              let view = window.contentView?.firstDescendant(of: EDRMetalView.self) else { return finish() }
+        let original = model.settings
+        let showedContents = model.showContents
+        // A page of running text: a hit well into the book, past the
+        // table of contents.
+        tab.showHit(tab.hits.count / 2)
+        model.showContents = false
+        after(1.0) {
+            capture("typography-start.png")
+            // The highlight starts the screen, so it stays on the screen
+            // that holds the reader's place in every look.
+            guard let start = tab.visibleRange?.start,
+                  let first = try? tab.session.rects(of: TextRange(start: start, end: Anchor(chapter: start.chapter, offset: start.offset + 1))).first
+            else { return finish() }
+            // Showing the hit left the reader's place at the hit; the place
+            // is the start of the screen instead, as after turning a page.
+            tab.go(to: start)
+            tab.beginSelection(at: CGPoint(x: first.midX, y: first.midY))
+            tab.extendSelection(to: CGPoint(x: first.midX + 180, y: first.midY))
+            let highlight = try? tab.highlightSelection(color: 3)
+            report("typography: highlighted \(highlight.map { ReaderTab.excerpt($0.text, limit: 40) } ?? "nothing")")
+            let looks = [
+                Look(name: "font-book") { $0.font = "" },
+                Look(name: "font-georgia") { $0.font = "Georgia" },
+                Look(name: "font-avenir-next") { $0.font = "Avenir Next" },
+                Look(name: "font-palatino") { $0.font = "Palatino" },
+                Look(name: "font-iowan") { $0.font = "Iowan Old Style" },
+                Look(name: "margins-narrow") { $0.font = "Georgia"; $0.margins = .narrow },
+                Look(name: "margins-wide-relaxed") { $0.font = "Georgia"; $0.margins = .wide; $0.lineSpacing = .relaxed },
+                Look(name: "justified") { $0.font = "Charter"; $0.justify = true },
+            ]
+            showLooks(looks[...], tab: tab, start: start, highlight: highlight) {
+                showTextPanel(over: view) {
+                    model.settings = original
+                    model.showContents = showedContents
+                    after(0.8) { finish() }
+                }
+            }
+        }
+    }
+
+    private func showLooks(_ looks: ArraySlice<Look>, tab: ReaderTab, start: Anchor, highlight: Annotation?,
+                           then done: @escaping @MainActor () -> Void) {
+        guard let look = looks.first else { return done() }
+        var settings = model.settings
+        settings.font = ""
+        settings.lineSpacing = .normal
+        settings.margins = .normal
+        settings.justify = false
+        look.change(&settings)
+        model.settings = settings
+        after(2.0) {
+            capture("\(look.name).png")
+            let hit = tab.currentHit.map { tab.hits[$0].range }
+            let place = tab.visibleRange?.contains(start) == true ? "stays at the same text" : "LOST its place"
+            report("\(look.name): pages \(tab.state.page + 1)-\(tab.state.lastVisible + 1) of \(tab.state.pages), \(place); "
+                + "highlight \(linesUp(highlight?.range, in: tab)); search hit \(linesUp(hit, in: tab))")
+            showLooks(looks.dropFirst(), tab: tab, start: start, highlight: highlight, then: done)
+        }
+    }
+
+    /// Reports whether a range on screen is drawn over its text: a hit test
+    /// at the middle of each of its boxes must land inside the range.
+    private func linesUp(_ range: TextRange?, in tab: ReaderTab) -> String {
+        guard let range else { return "missing" }
+        guard let rects = try? tab.session.rects(of: range), !rects.isEmpty else { return "off screen" }
+        let inside = rects.filter { rect in
+            guard let anchor = (try? tab.session.anchor(at: CGPoint(x: rect.midX, y: rect.midY))) ?? nil else { return false }
+            return range.contains(anchor)
+        }
+        return inside.count == rects.count ? "lines up (\(rects.count) boxes)" : "MISALIGNED (\(inside.count) of \(rects.count) boxes)"
+    }
+
+    /// Shows the Text popover over the bottom right of the page, as the
+    /// status bar button does, and captures it.
+    private func showTextPanel(over view: NSView, then done: @escaping @MainActor () -> Void) {
+        let popover = NSPopover()
+        popover.contentViewController = NSHostingController(rootView: TextPanel()
+            .environment(model)
+            .environment(\.accent, model.accent)
+            .preferredColorScheme(.dark))
+        popover.behavior = .applicationDefined
+        let corner = NSRect(x: view.bounds.maxX - 30, y: view.bounds.minY, width: 1, height: 1)
+        popover.show(relativeTo: corner, of: view, preferredEdge: view.isFlipped ? .maxY : .minY)
+        after(0.8) {
+            if let window = popover.contentViewController?.view.window {
+                capture("text-panel.png", window: window)
+            } else {
+                report("the Text popover did not open")
+            }
+            popover.close()
+            done()
         }
     }
 
@@ -114,6 +225,11 @@ struct Verifier {
     }
 
     private func openSettings(main: NSWindow?) {
+        // The Reading tab holds the text settings; the tab the user last
+        // chose is put back.
+        let defaults = UserDefaults.standard
+        let shownTab = defaults.string(forKey: SettingsTab.storageKey)
+        defaults.set(SettingsTab.reading.rawValue, forKey: SettingsTab.storageKey)
         SettingsTab.openWindow()
         after(1.0) {
             let settings = NSApp.windows.first { $0.isVisible && $0 !== main && $0.contentView != nil }
@@ -122,6 +238,7 @@ struct Verifier {
             } else {
                 report("the Settings window did not open")
             }
+            defaults.set(shownTab, forKey: SettingsTab.storageKey)
             NSApp.terminate(nil)
         }
     }

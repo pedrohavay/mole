@@ -133,6 +133,20 @@
 "images.dim" = "Dim";
 "images.off" = "Hidden";
 "images.full" = "Bright";
+"text.font" = "Font";
+"text.paragraphs" = "Paragraphs";
+"text.lineSpacing" = "Line spacing";
+"text.alignment" = "Alignment";
+"text.margins" = "Margins";
+"font.book" = "Book's Fonts";
+"spacing.compact" = "Compact";
+"spacing.normal" = "Normal";
+"spacing.relaxed" = "Relaxed";
+"alignment.left" = "Left";
+"alignment.justified" = "Justified";
+"margins.narrow" = "Narrow";
+"margins.normal" = "Normal";
+"margins.wide" = "Wide";
 
 /* Bookmarks, highlights and notes */
 "bookmark.add" = "Add Bookmark";
@@ -218,6 +232,7 @@
 "settings.language" = "Language";
 "settings.language.note" = "Mole follows the language set in System Settings › General › Language & Region. English and Brazilian Portuguese are available.";
 "settings.text" = "Text";
+"settings.text.note" = "Book's Fonts keeps the fonts that come with the book. Code stays in a monospaced font whatever the font. Mole does not hyphenate words, so justified lines can leave wide gaps between them.";
 "settings.light" = "Light";
 "settings.light.note" = "Brightness is a share of what the screen can show above SDR white right now. Without EDR the text stops at SDR white.";
 "settings.shortcuts.reading" = "While reading";

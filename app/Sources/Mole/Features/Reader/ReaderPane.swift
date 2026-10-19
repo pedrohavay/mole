@@ -28,7 +28,7 @@ struct ReaderPane: View {
                     ReaderCanvas(model: model, tab: tab, revision: tab.revision, gain: model.gain,
                                  tint: model.settings.tint, gamma: model.settings.gamma,
                                  fontSize: model.settings.fontSize, spread: model.settings.spread,
-                                 images: model.settings.images,
+                                 style: model.settings.textStyle, images: model.settings.images,
                                  marks: tab.marks, accentLight: model.accentLight) { annotation, point in
                         editing = HighlightEdit(annotation: annotation,
                                                 anchor: CGRect(x: point.x - 1, y: point.y - 1, width: 2, height: 2))
@@ -101,6 +101,7 @@ struct ReaderCanvas: NSViewRepresentable {
     let gamma: Double
     let fontSize: Double
     let spread: Spread
+    let style: TextStyle
     let images: ImageLight
     let marks: [PageMark]
     let accentLight: SIMD3<Float>
