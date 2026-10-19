@@ -155,6 +155,35 @@ func TestInspect(t *testing.T) {
 	}
 }
 
+func TestLanguage(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata string
+		want     string
+	}{
+		{name: "Tag", metadata: `<dc:language>en-US</dc:language>`, want: "en-US"},
+		{name: "Underscore", metadata: `<dc:language> pt_BR </dc:language>`, want: "pt-BR"},
+		{name: "FirstOfMany", metadata: `<dc:language></dc:language><dc:language>fr</dc:language><dc:language>en</dc:language>`, want: "fr"},
+		{name: "None", metadata: `<dc:title>No language</dc:title>`, want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeEPUB(t, `<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <metadata>`+tt.metadata+`</metadata></package>`, nil)
+			got, err := Language(path)
+			if err != nil || got != tt.want {
+				t.Errorf("Language = %q, %v; want %q", got, err, tt.want)
+			}
+			if info, err := Inspect(path); err != nil || info.Language != tt.want {
+				t.Errorf("Inspect().Language = %q, %v; want %q", info.Language, err, tt.want)
+			}
+		})
+	}
+	if _, err := Language(filepath.Join(t.TempDir(), "missing.epub")); err == nil {
+		t.Error("Language of a missing file: got nil error")
+	}
+}
+
 func TestInspectRejectsNonEPUB(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "notes.txt")
 	if err := os.WriteFile(path, []byte("not a zip"), 0o644); err != nil {

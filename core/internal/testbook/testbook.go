@@ -18,6 +18,7 @@ import (
 // Book describes an EPUB to write.
 type Book struct {
 	Title    string
+	Language string            // dc:language, left out when empty
 	Chapters []string          // the HTML body of each document of the spine
 	Files    map[string][]byte // more files, such as images, by path under OEBPS/
 }
@@ -74,9 +75,13 @@ func (b Book) WriteTo(t testing.TB, file string) string {
 	if title == "" {
 		title = "Test"
 	}
+	metadata := `<dc:title>` + title + `</dc:title>`
+	if b.Language != "" {
+		metadata += `<dc:language>` + b.Language + `</dc:language>`
+	}
 	add("OEBPS/content.opf", []byte(`<?xml version="1.0"?>
 <package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" version="3.0">
-  <metadata><dc:title>`+title+`</dc:title></metadata>
+  <metadata>`+metadata+`</metadata>
   <manifest>`+manifest.String()+`</manifest>
   <spine>`+spine.String()+`</spine>
 </package>`))

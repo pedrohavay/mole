@@ -137,8 +137,9 @@ func (doc *Document) PageAt(chapter int, fraction float64) (int, bool) {
 
 // Metadata keys understood by Metadata.
 const (
-	MetaTitle  = "info:Title"
-	MetaAuthor = "info:Author"
+	MetaTitle    = "info:Title"
+	MetaAuthor   = "info:Author"
+	MetaLanguage = "info:Language"
 )
 
 // Metadata returns a metadata value of the document, or "" if there is none.

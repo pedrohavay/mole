@@ -1,5 +1,6 @@
-// Package epub reads the package metadata of EPUB files: title, author and
-// the cover image they declare. It does not lay out or render content.
+// Package epub reads the package metadata of EPUB files: title, author,
+// language and the cover image they declare. It does not lay out or render
+// content.
 package epub
 
 import (
@@ -26,15 +27,20 @@ const (
 type Info struct {
 	Title  string
 	Author string
+	// Language is the first language the package declares (dc:language),
+	// normally a BCP 47 tag such as "en" or "pt-BR", or "" when it declares
+	// none. Underscores are turned into hyphens; it is not checked further.
+	Language string
 	// Cover is the encoded cover image (JPEG, PNG, ...), or nil when the
 	// package declares none or it cannot be read.
 	Cover []byte
 }
 
 type packageDoc struct {
-	Titles   []string `xml:"metadata>title"`
-	Creators []string `xml:"metadata>creator"`
-	Metas    []struct {
+	Titles    []string `xml:"metadata>title"`
+	Creators  []string `xml:"metadata>creator"`
+	Languages []string `xml:"metadata>language"`
+	Metas     []struct {
 		Name    string `xml:"name,attr"`
 		Content string `xml:"content,attr"`
 	} `xml:"metadata>meta"`
@@ -57,27 +63,55 @@ func Inspect(file string) (Info, error) {
 		return Info{}, err
 	}
 	defer archive.Close()
+	pkg, opfPath, err := readPackage(&archive.Reader)
+	if err != nil {
+		return Info{}, err
+	}
+	info := Info{Title: first(pkg.Titles), Author: first(pkg.Creators), Language: language(pkg.Languages)}
+	info.Cover = findCover(&archive.Reader, path.Dir(opfPath), pkg)
+	return info, nil
+}
 
+// Language returns the language the EPUB at file declares, as Info.Language
+// has it, reading only its package document.
+func Language(file string) (string, error) {
+	archive, err := zip.OpenReader(file)
+	if err != nil {
+		return "", err
+	}
+	defer archive.Close()
+	pkg, _, err := readPackage(&archive.Reader)
+	if err != nil {
+		return "", err
+	}
+	return language(pkg.Languages), nil
+}
+
+// readPackage returns the package document of archive and its path.
+func readPackage(archive *zip.Reader) (packageDoc, string, error) {
 	var container struct {
 		Rootfiles []struct {
 			Path string `xml:"full-path,attr"`
 		} `xml:"rootfiles>rootfile"`
 	}
-	if err := readXML(&archive.Reader, "META-INF/container.xml", &container); err != nil {
-		return Info{}, err
+	if err := readXML(archive, "META-INF/container.xml", &container); err != nil {
+		return packageDoc{}, "", err
 	}
 	if len(container.Rootfiles) == 0 || container.Rootfiles[0].Path == "" {
-		return Info{}, errors.New("epub has no package document")
+		return packageDoc{}, "", errors.New("epub has no package document")
 	}
 	opfPath := container.Rootfiles[0].Path
 	var pkg packageDoc
-	if err := readXML(&archive.Reader, opfPath, &pkg); err != nil {
-		return Info{}, err
+	if err := readXML(archive, opfPath, &pkg); err != nil {
+		return packageDoc{}, "", err
 	}
+	return pkg, opfPath, nil
+}
 
-	info := Info{Title: first(pkg.Titles), Author: first(pkg.Creators)}
-	info.Cover = findCover(&archive.Reader, path.Dir(opfPath), pkg)
-	return info, nil
+// language returns the first declared language, with the underscores some
+// books write between its parts ("pt_BR") turned into hyphens.
+func language(values []string) string {
+	return strings.ReplaceAll(first(values), "_", "-")
 }
 
 // findCover returns the first cover that can be read, trying in turn: the

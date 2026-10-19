@@ -785,6 +785,25 @@ func mole_session_range_rects(s C.int64_t, textRange *C.char) *C.char {
 	return jsonString(out)
 }
 
+// mole_session_language returns the language the book declares, as JSON
+// {"language":string}: normally a BCP 47 tag such as "en" or "pt-BR", from
+// an EPUB's dc:language or the metadata of other documents, and "" when the
+// book declares none. The caller frees the result with mole_free.
+//
+//export mole_session_language
+func mole_session_language(s C.int64_t) *C.char {
+	ss, ok := sessions.get(int64(s))
+	if !ok {
+		fail(errBadHandle)
+		return nil
+	}
+	return jsonString(languageJSON{Language: ss.book.Reading().Language()})
+}
+
+type languageJSON struct {
+	Language string `json:"language"`
+}
+
 type paragraphJSON struct {
 	Range     rangeJSON `json:"range"`
 	Text      string    `json:"text"`
