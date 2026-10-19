@@ -1,0 +1,44 @@
+# CI lints and tests Mole and builds an unsigned release on every push to
+# main and every pull request. The build uses the pinned MuPDF of
+# scripts/build-mupdf.sh, cached until that script changes.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Lint, test and build
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: core/go.mod
+          cache-dependency-path: core/go.sum
+
+      - name: Cache the pinned MuPDF
+        uses: actions/cache@v4
+        with:
+          path: build/mupdf
+          key: mupdf-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-mupdf.sh') }}
+
+      - name: Lint and test
+        run: make lint test DEVELOPER_DIR="$(xcode-select -p)"
+
+      # An ad hoc signature with the hardened runtime, and the smoke test of
+      # the signed app; only notarization is left out.
+      - name: Build an unsigned release
+        run: make release SIGN_IDENTITY=- NOTARIZE=no DEVELOPER_DIR="$(xcode-select -p)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mole-unsigned
+          path: build/release/

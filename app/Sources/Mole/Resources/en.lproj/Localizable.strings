@@ -185,6 +185,8 @@
 "menu.enterFullScreen" = "Enter Full Screen";
 "menu.exitFullScreen" = "Exit Full Screen";
 "menu.shortcuts" = "Keyboard Shortcuts";
+"menu.notices" = "Third-Party Notices";
+"menu.source" = "Mole Source Code";
 "menu.book" = "Book";
 "menu.find" = "Find in Book…";
 "menu.findNext" = "Find Next";

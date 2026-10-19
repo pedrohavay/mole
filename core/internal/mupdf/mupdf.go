@@ -5,12 +5,13 @@
 // Every Document has its own MuPDF context, so different documents may be
 // used on different goroutines at the same time.
 //
-// It links the static MuPDF libraries installed by Homebrew (mupdf-tools).
+// It links the static MuPDF libraries. Where they are comes from CGO_CFLAGS
+// (-I) and CGO_LDFLAGS (-L), which the Makefile sets from MUPDF_PREFIX; run
+// Go commands through make, or set those two variables yourself.
 package mupdf
 
 /*
-#cgo CFLAGS: -I/opt/homebrew/include
-#cgo LDFLAGS: -L/opt/homebrew/lib -lmupdf -lmupdf-third -lm
+#cgo LDFLAGS: -lmupdf -lmupdf-third -lm
 #include <stdlib.h>
 #include "shim.h"
 */

@@ -26,6 +26,11 @@ final class LaunchArgumentsTests: XCTestCase {
         XCTAssertEqual(parsed, LaunchArguments(books: ["/a/One.EPUB", "/b/two.epub"], verifyDirectory: "/tmp/out"))
     }
 
+    func testSmokeTest() {
+        XCTAssertTrue(LaunchArguments.parse(["Mole", "--smoke-test"]).smokeTest)
+        XCTAssertFalse(LaunchArguments.parse(["Mole"]).smokeTest)
+    }
+
     func testVerifyDirWithoutValue() {
         XCTAssertNil(LaunchArguments.parse(["Mole", "--verify-dir"]).verifyDirectory)
     }

@@ -8,15 +8,12 @@ import PackageDescription
 
 let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
 let coreLibrary = "\(root)/../core/build"
-let homebrewLibrary = ProcessInfo.processInfo.environment["MUPDF_LIB_DIR"] ?? "/opt/homebrew/lib"
 
+// libmolecore.a already holds MuPDF: `make core` merges MuPDF's static
+// libraries into it, so the app does not need to know where MuPDF is.
 let coreLinking: [LinkerSetting] = [
-    .unsafeFlags(["-L", coreLibrary, "-L", homebrewLibrary]),
+    .unsafeFlags(["-L", coreLibrary]),
     .linkedLibrary("molecore"),
-    // A Go c-archive does not carry the C libraries its cgo code needs, so
-    // MuPDF is linked here.
-    .linkedLibrary("mupdf"),
-    .linkedLibrary("mupdf-third"),
     .linkedLibrary("resolv"),
     .linkedFramework("CoreFoundation"),
 ]

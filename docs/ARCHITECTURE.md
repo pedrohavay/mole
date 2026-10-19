@@ -15,8 +15,16 @@ EDRRenderer (Metal) ◀── coverage mask (one byte per pixel) ◀────
 ## The C API
 
 `core/cmd/molecore` is built with `go build -buildmode=c-archive`, which
-produces `libmolecore.a` and `libmolecore.h`. The header is copied into
-`app/Sources/MoleCore`, a system library module the app imports.
+produces a static library and `libmolecore.h`. A c-archive does not carry
+the C libraries its cgo code links, so the Makefile merges MuPDF's two
+static libraries into it with `libtool`, giving `libmolecore.a`: the app
+links that one library and never needs to know where MuPDF is. The header
+is copied into `app/Sources/MoleCore`, a system library module the app
+imports.
+
+MuPDF itself is a pinned source release (`scripts/build-mupdf.sh`) built
+with a deployment target of macOS 14. A Homebrew bottle would target the
+macOS of the machine that built it and change with every upgrade.
 
 - Objects are int64 handles (0 means failure). A library handle owns the
   database; a session handle is an open book.

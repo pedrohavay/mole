@@ -26,6 +26,11 @@ cp "$BIN_DIR/Mole" "$APP/Contents/MacOS/Mole"
 # SwiftPM's resource bundle holds the string tables (see L10n.bundle).
 cp -R "$BIN_DIR/Mole_Mole.bundle" "$APP/Contents/Resources/"
 cp "$ROOT/assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+# The AGPL and the licenses of the parts Mole includes travel with the app.
+# They get a .txt extension so that Help > Third-Party Notices opens them in
+# the user's text editor.
+cp "$ROOT/LICENSE" "$APP/Contents/Resources/LICENSE.txt"
+cp "$ROOT/THIRD_PARTY_NOTICES" "$APP/Contents/Resources/THIRD_PARTY_NOTICES.txt"
 
 # The main bundle must list its languages too, or AppKit shows the system
 # menus (Edit, Window, Help) in English whatever the user's language.
@@ -39,6 +44,8 @@ for language in $LANGUAGES; do
 	mkdir -p "$APP/Contents/Resources/$language.lproj"
 	printf '"CFBundleName" = "Mole";\n"EPUB Book" = "%s";\n' "$EPUB_NAME" \
 		> "$APP/Contents/Resources/$language.lproj/InfoPlist.strings"
+	# The About panel shows Credits.rtf in the user's language.
+	cp "$ROOT/assets/credits/$language.rtf" "$APP/Contents/Resources/$language.lproj/Credits.rtf"
 	LOCALIZATIONS="$LOCALIZATIONS		<string>$language</string>
 "
 done
@@ -67,7 +74,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © $(date +%Y) the Mole authors.</string>
+	<string>Copyright © $(date +%Y) Pedro Havay. GNU AGPL 3.0 or later.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleLocalizations</key>

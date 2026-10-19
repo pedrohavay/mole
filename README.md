@@ -49,10 +49,6 @@ Build Mole from source. With Xcode 15.4 or later and Go 1.26 or later
 installed:
 
 ```bash
-brew install mupdf-tools
-```
-
-```bash
 git clone https://github.com/pedrohavay/mole.git
 ```
 
@@ -61,7 +57,8 @@ cd mole && make run
 ```
 
 `make run` builds `build/Mole.app` and opens it; copy it to `/Applications`
-to keep it. The build is signed ad hoc, which is enough on the Mac that
+to keep it. The first build also downloads MuPDF (about 65 MB) and compiles
+it, which takes a minute or two. The build is signed ad hoc, which is enough on the Mac that
 built it. Gatekeeper refuses a copy downloaded from elsewhere until Mole has
 notarized releases.
 
@@ -127,12 +124,12 @@ need:
 
 - Xcode 15.4 or later. The Command Line Tools alone lack XCTest.
 - Go 1.26 or later.
-- MuPDF from Homebrew (`brew install mupdf-tools`).
 - librsvg (`brew install librsvg`), only to render the icon again after
   editing `assets/Mole.svg`.
 
-`make` builds the Go core as a static library, builds the SwiftUI app against
-it, and assembles `build/Mole.app`. The other targets:
+`make` builds MuPDF 1.26.1 from its source release into `build/mupdf` the
+first time, then the Go core as a static library with MuPDF inside it, then
+the SwiftUI app, and assembles `build/Mole.app`. The other targets:
 
 | Target | What it does |
 |--------|--------------|
@@ -140,18 +137,51 @@ it, and assembles `build/Mole.app`. The other targets:
 | `make test` | Runs the Go and Swift tests. Set `MOLE_TEST_EPUB` to an EPUB file to add the tests that open a real book. |
 | `make verify` | Runs the app's self-check, which captures the library, a book and Settings into `build/verify`. Set `BOOK` to add an EPUB first. |
 | `make lint` | Runs `gofmt` and `go vet` on the core. |
-| `make clean` | Removes every build product. |
+| `make release` | Builds a signed and notarized `build/release/Mole-<version>.zip`; see below. |
+| `make notices` | Regenerates `THIRD_PARTY_NOTICES` after a dependency changes. |
+| `make clean` | Removes the build products and keeps the MuPDF build. |
+| `make distclean` | Removes everything, MuPDF included. |
 
 If `go version` is older than 1.26 and `GOTOOLCHAIN` is `local`, point `GO`
 at a newer toolchain, for example `make GO=$HOME/go/bin/go1.26.0`. The
 Makefile uses the Xcode in `/Applications/Xcode.app`; set `DEVELOPER_DIR` to
 use another one. Run `make core` once before opening `app/Package.swift` in
-Xcode, because the package needs the header the core build generates. For a
-MuPDF outside `/opt/homebrew`, set `MUPDF_LIB_DIR`.
+Xcode, because the package needs the header the core build generates.
+
+To build against another MuPDF, such as Homebrew's, set `MUPDF_PREFIX` to
+the folder that holds its `include` and `lib`, for example
+`make MUPDF_PREFIX=$(brew --prefix mupdf-tools)`. The Makefile passes the
+prefix to cgo through `CGO_CFLAGS` and `CGO_LDFLAGS`, so Go commands run
+outside make need those two variables set the same way.
 
 The library lives in `~/Library/Application Support/Mole/library.db`, with
 the copies of the books in the `Books` folder next to it. Set `MOLE_LIBRARY`
 to use another database file.
+
+## Making a release
+
+A release needs a "Developer ID Application" certificate in the keychain
+and a notarytool profile with the credentials of the same Apple Developer
+team. Store the profile once:
+
+```bash
+xcrun notarytool store-credentials mole --apple-id you@example.com --team-id TEAMID
+```
+
+Then build, sign, notarize and pack the release:
+
+```bash
+make release SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=mole VERSION=0.1.0
+```
+
+The release is built against the pinned MuPDF, so it targets macOS 14 no
+matter which macOS builds it. The script signs the app with the hardened
+runtime, starts the signed app once to check it, waits for notarization,
+staples the ticket, and writes `build/release/Mole-0.1.0.zip` with its
+SHA-256. Publish both on a GitHub release made from the tagged commit, so
+the release links to its exact source as the AGPL asks. A dry run without an
+Apple account is `make release SIGN_IDENTITY=- NOTARIZE=no`, which is what
+CI does on every push.
 
 ## How it works
 
@@ -190,9 +220,10 @@ app/                  Swift: the macOS app (SwiftPM)
     Resources/        string tables (en, pt-BR)
     Support/          localization, formatting, window chrome
   Tests/MoleTests/
-assets/               the app icon; Mole.svg is its source
-scripts/              bundling (bundle.sh) and icon rendering (icon.sh)
+assets/               the app icon (Mole.svg is its source) and the About credits
+scripts/              building MuPDF, bundling, releases, notices and the icon
 docs/                 architecture notes
+.github/workflows/    CI: lint, tests and an unsigned release build
 ```
 
 ## Contributing
@@ -219,10 +250,14 @@ Software Foundation, either version 3 of the License, or (at your option) any
 later version. See [LICENSE](LICENSE) for the full text.
 
 Mole links [MuPDF](https://mupdf.com), which Artifex distributes under the
-GNU AGPL version 3 or a commercial license.
+GNU AGPL version 3 or a commercial license, along with the libraries and
+fonts MuPDF builds in and a few Go modules. Their licenses are in
+[THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES), which the app also opens from
+Help > Third-Party Notices.
 
 ## Acknowledgements
 
 [MuPDF](https://mupdf.com) lays out and renders the books, and
 [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) gives the core SQLite
-without a C dependency of its own.
+without a C dependency of its own. This software is based in part on the
+work of the Independent JPEG Group.

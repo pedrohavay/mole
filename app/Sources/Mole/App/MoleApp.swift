@@ -64,9 +64,15 @@ final class Launch {
     }
 
     func start() {
+        let arguments = LaunchArguments.parse()
         do {
             let model = try AppModel(library: Library(path: try Self.libraryPath()))
-            let arguments = LaunchArguments.parse()
+            if arguments.smokeTest {
+                // NSApp does not exist yet while the App is initialized.
+                DispatchQueue.main.async { SmokeTest.run() }
+                state = .ready(model)
+                return
+            }
             model.importBooks(arguments.books)
             state = .ready(model)
             AppDelegate.openFiles = { model.openFiles($0) }
@@ -75,6 +81,7 @@ final class Launch {
                 DispatchQueue.main.async { Verifier(model: model, directory: directory).start() }
             }
         } catch {
+            if arguments.smokeTest { SmokeTest.fail("cannot open the library: \(error.localizedDescription)") }
             state = .failed(error.localizedDescription)
         }
     }

@@ -20,30 +20,76 @@ unexport SDKROOT
 
 BUILD := build
 APP := $(BUILD)/Mole.app
+RELEASE := $(BUILD)/release
 CORE_LIB := core/build/libmolecore.a
 CORE_HEADER := app/Sources/MoleCore/libmolecore.h
 CORE_SOURCES := $(shell find core/cmd core/internal -type f \( -name '*.go' -o -name '*.c' -o -name '*.h' \) ! -name '*_test.go')
 
-.PHONY: all core app bundle run verify test test-core test-app lint clean help
+# MUPDF_PREFIX holds MuPDF's headers and static libraries. By default it is
+# the pinned build of scripts/build-mupdf.sh, made on first use; point it at
+# another install, for example MUPDF_PREFIX=$(brew --prefix mupdf-tools), to
+# use that instead. Releases always use the pinned build.
+MUPDF_PINNED := $(CURDIR)/$(BUILD)/mupdf
+MUPDF_PREFIX ?= $(MUPDF_PINNED)
+MUPDF_VERSION := $(shell sed -n 's/^VERSION=//p' scripts/build-mupdf.sh)
+MUPDF_SOURCE := $(BUILD)/mupdf-src/mupdf-$(MUPDF_VERSION)-source
+MUPDF_LIBS := $(MUPDF_PREFIX)/lib/libmupdf.a $(MUPDF_PREFIX)/lib/libmupdf-third.a
+
+# cgo finds MuPDF through these. Setting CGO_CFLAGS replaces Go's default
+# of -O2 -g, so the default is kept.
+CGO_CFLAGS ?= -O2 -g
+CGO_CFLAGS += -I$(MUPDF_PREFIX)/include
+CGO_LDFLAGS += -L$(MUPDF_PREFIX)/lib
+export CGO_CFLAGS CGO_LDFLAGS
+
+# Release signing. SIGN_IDENTITY is a "Developer ID Application" identity
+# and NOTARY_PROFILE a notarytool keychain profile (see the README).
+# SIGN_IDENTITY=- NOTARIZE=no makes an ad hoc, unnotarized release that
+# exercises every other step.
+SIGN_IDENTITY ?=
+NOTARY_PROFILE ?=
+NOTARIZE ?= yes
+
+.PHONY: all core app bundle run verify test test-core test-app lint notices release mupdf clean distclean help FORCE
 
 all: bundle
 
 help:
-	@echo "make            build $(APP)"
-	@echo "make run        build and open the app"
-	@echo "make verify     build, run the capture check (BOOK=path.epub adds a book)"
-	@echo "make test       run the Go and Swift tests (MOLE_TEST_EPUB=path.epub enables the book tests)"
-	@echo "make lint       gofmt and go vet"
-	@echo "make clean      remove every build product"
+	@echo "make              build $(APP)"
+	@echo "make run          build and open the app"
+	@echo "make verify       build, run the capture check (BOOK=path.epub adds a book)"
+	@echo "make test         run the Go and Swift tests (MOLE_TEST_EPUB=path.epub enables the book tests)"
+	@echo "make lint         gofmt and go vet"
+	@echo "make release      signed, notarized zip in $(RELEASE) (SIGN_IDENTITY, NOTARY_PROFILE)"
+	@echo "make notices      regenerate THIRD_PARTY_NOTICES"
+	@echo "make mupdf        build the pinned MuPDF $(MUPDF_VERSION) into $(BUILD)/mupdf"
+	@echo "make clean        remove the build products, keeping the MuPDF build"
+	@echo "make distclean    remove everything, MuPDF included"
 
 core: $(CORE_LIB)
 
-# The archive is built under a temporary name and moved into place, so a
-# failed build never leaves a half-written library for the Swift linker.
-$(CORE_LIB): $(CORE_SOURCES) core/go.mod core/go.sum
+mupdf: $(MUPDF_PINNED)/lib/libmupdf.a
+
+$(MUPDF_PINNED)/lib/libmupdf.a $(MUPDF_PINNED)/lib/libmupdf-third.a:
+	scripts/build-mupdf.sh $(MUPDF_PINNED)
+
+# The stamp records which MuPDF the core was built with, so switching
+# MUPDF_PREFIX rebuilds it. It is rewritten only when the prefix changes.
+core/build/mupdf.prefix: FORCE
 	@mkdir -p core/build
-	cd core && $(GO) build -trimpath -buildmode=c-archive -o build/libmolecore.tmp.a ./cmd/molecore
-	mv core/build/libmolecore.tmp.h core/build/libmolecore.h
+	@echo "$(MUPDF_PREFIX)" | cmp -s - $@ || echo "$(MUPDF_PREFIX)" > $@
+
+# The core archive is the Go c-archive with MuPDF's libraries merged in, so
+# the app links one library. It is built under temporary names and moved
+# into place, so a failed build never leaves a half-written library.
+$(CORE_LIB): $(CORE_SOURCES) core/go.mod core/go.sum $(MUPDF_LIBS) core/build/mupdf.prefix
+	@mkdir -p core/build
+	cd core && $(GO) build -trimpath -buildmode=c-archive -o build/libmolecore.go.a ./cmd/molecore
+	rm -f core/build/libmolecore.tmp.a
+	libtool -static -no_warning_for_no_symbols -o core/build/libmolecore.tmp.a \
+		core/build/libmolecore.go.a $(MUPDF_LIBS) 2>&1 | grep -v "duplicate member name" || true
+	test -s core/build/libmolecore.tmp.a
+	mv core/build/libmolecore.go.h core/build/libmolecore.h
 	mv core/build/libmolecore.tmp.a $(CORE_LIB)
 	@cmp -s core/build/libmolecore.h $(CORE_HEADER) || cp core/build/libmolecore.h $(CORE_HEADER)
 
@@ -65,15 +111,33 @@ verify: bundle
 
 test: test-core test-app
 
-test-core:
+test-core: $(MUPDF_LIBS)
 	cd core && $(GO) test ./...
 
 test-app: core
 	cd app && $(SWIFT) test
 
-lint:
+lint: $(MUPDF_LIBS)
 	@test -z "$$(gofmt -l core)" || { gofmt -l core; echo "gofmt: the files above need formatting"; exit 1; }
 	cd core && $(GO) vet ./...
 
+# THIRD_PARTY_NOTICES collects the licenses of everything linked into Mole:
+# MuPDF's components and fonts from its source, and the Go modules.
+notices: $(MUPDF_PINNED)/lib/libmupdf.a
+	GO=$(GO) scripts/notices.sh "$(MUPDF_SOURCE)" > THIRD_PARTY_NOTICES.tmp
+	mv THIRD_PARTY_NOTICES.tmp THIRD_PARTY_NOTICES
+
+# A release is always built against the pinned MuPDF, which targets the
+# oldest macOS Mole supports.
+RELEASE_ENV = SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" NOTARIZE="$(NOTARIZE)"
+
+release:
+	@$(RELEASE_ENV) scripts/release.sh --check
+	$(MAKE) bundle MUPDF_PREFIX=$(MUPDF_PINNED)
+	$(RELEASE_ENV) scripts/release.sh $(APP) $(RELEASE) $(VERSION)
+
 clean:
-	rm -rf $(BUILD) core/build app/.build $(CORE_HEADER)
+	rm -rf $(APP) $(BUILD)/verify $(RELEASE) core/build app/.build $(CORE_HEADER)
+
+distclean: clean
+	rm -rf $(BUILD)

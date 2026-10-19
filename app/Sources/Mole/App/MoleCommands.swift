@@ -169,6 +169,16 @@ struct MoleCommands: Commands {
                 UserDefaults.standard.set(SettingsTab.shortcuts.rawValue, forKey: SettingsTab.storageKey)
                 SettingsTab.openWindow()
             })
+            Divider()
+            Button(L10n.text("menu.notices")) {
+                // The bundle carries the notices; a bare build (swift run) has none.
+                if let url = Bundle.main.url(forResource: "THIRD_PARTY_NOTICES", withExtension: "txt") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            Button(L10n.text("menu.source")) {
+                if let url = URL(string: "https://github.com/pedrohavay/mole") { NSWorkspace.shared.open(url) }
+            }
         }
     }
 

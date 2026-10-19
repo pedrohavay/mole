@@ -185,6 +185,8 @@
 "menu.enterFullScreen" = "Entrar em Tela Cheia";
 "menu.exitFullScreen" = "Sair da Tela Cheia";
 "menu.shortcuts" = "Atalhos de Teclado";
+"menu.notices" = "Avisos de Terceiros";
+"menu.source" = "Código-fonte do Mole";
 "menu.book" = "Livro";
 "menu.find" = "Buscar no Livro…";
 "menu.findNext" = "Buscar Próximo";

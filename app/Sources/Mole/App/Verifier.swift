@@ -90,6 +90,17 @@ struct Verifier {
     private func finish() {
         let main = mainWindow
         reportMenus()
+        NSApp.orderFrontStandardAboutPanel(nil)
+        after(0.8) {
+            if let about = NSApp.windows.first(where: { $0.isVisible && $0 !== main && $0.contentView != nil }) {
+                capture("about.png", window: about)
+                about.close()
+            }
+            openSettings(main: main)
+        }
+    }
+
+    private func openSettings(main: NSWindow?) {
         SettingsTab.openWindow()
         after(1.0) {
             let settings = NSApp.windows.first { $0.isVisible && $0 !== main && $0.contentView != nil }
