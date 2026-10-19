@@ -1,14 +1,15 @@
 // Molecore exposes the reader's core (library, import, layout and rendering of
-// pages into an EDR coverage mask, text selection, search, bookmarks and
-// highlights) as a C API, built as a static library for a native user
-// interface written in another language:
+// pages into an EDR coverage mask with layers for colors and pictures, text
+// selection, search, bookmarks and highlights) as a C API, built as a static
+// library for a native user interface written in another language:
 //
 //	go build -buildmode=c-archive -o libmolecore.a ./cmd/molecore
 //
 // Objects cross the boundary as int64 handles. Structured results are JSON
 // strings, and every string or buffer returned to C must be released with
-// mole_free. Functions that fail return 0 (or a null pointer) and leave a
-// message for mole_last_error, which belongs to the calling thread.
+// mole_free, except the layers a session renders, which it owns. Functions
+// that fail return 0 (or a null pointer) and leave a message for
+// mole_last_error, which belongs to the calling thread.
 //
 // Threads: the library functions (mole_library_*, import included) and the
 // search functions (mole_search_*) may be called from any thread, one call
@@ -45,6 +46,7 @@ import (
 
 	"mole/core/internal/importer"
 	"mole/core/internal/library"
+	"mole/core/internal/mupdf"
 	"mole/core/internal/reading"
 	"mole/core/internal/session"
 )
@@ -84,36 +86,69 @@ func (h *handles[T]) remove(id int64) {
 	delete(h.m, id)
 }
 
-// openBook is an open book together with the C buffers its text mask and
-// image layer are copied to, which stay valid until the next render, layout
-// or close.
+// openBook is an open book together with the C buffers its layers are
+// copied to, which stay valid until the next render, layout or close.
 type openBook struct {
 	book   *session.Book
 	mask   cBuffer
+	colors cBuffer
 	images cBuffer
+	gray   cBuffer // the image layer in gray, for mole_session_image_mask
 }
 
-// cBuffer is memory allocated with C.malloc, reused while its size fits.
+// cBuffer is memory allocated with C, reused while its size fits.
 type cBuffer struct {
-	p    unsafe.Pointer
-	size int
+	p     unsafe.Pointer
+	size  int
+	blank bool // all zero
+}
+
+// resize makes the buffer size bytes long, all zero if it had another size.
+func (b *cBuffer) resize(size int) error {
+	if size == 0 {
+		return errors.New("molecore: nothing to copy; lay out the book first")
+	}
+	if b.size == size {
+		return nil
+	}
+	C.free(b.p)
+	b.p, b.size = C.calloc(C.size_t(size), 1), 0
+	if b.p == nil {
+		return errors.New("molecore: out of memory")
+	}
+	b.size, b.blank = size, true
+	return nil
 }
 
 // fill copies data into the buffer, growing it as needed.
 func (b *cBuffer) fill(data []byte) error {
-	if len(data) == 0 {
-		return errors.New("molecore: nothing to copy; lay out the book first")
-	}
-	if b.size != len(data) {
-		C.free(b.p)
-		b.p, b.size = C.malloc(C.size_t(len(data))), 0
-		if b.p == nil {
-			return errors.New("molecore: out of memory")
-		}
-		b.size = len(data)
+	if err := b.resize(len(data)); err != nil {
+		return err
 	}
 	C.memcpy(b.p, unsafe.Pointer(&data[0]), C.size_t(len(data)))
+	b.blank = false
 	return nil
+}
+
+// clear makes the buffer size bytes of zero.
+func (b *cBuffer) clear(size int) error {
+	if err := b.resize(size); err != nil {
+		return err
+	}
+	if !b.blank {
+		C.memset(b.p, 0, C.size_t(size))
+		b.blank = true
+	}
+	return nil
+}
+
+// fillLayer copies a layer that may be empty (drawn false, layer nil or all
+// zero) of size bytes into the buffer.
+func (b *cBuffer) fillLayer(layer []byte, drawn bool, size int) error {
+	if !drawn || len(layer) != size {
+		return b.clear(size)
+	}
+	return b.fill(layer)
 }
 
 func (b *cBuffer) free() {
@@ -279,14 +314,15 @@ func mole_library_remove(lib, bookID C.int64_t) C.int {
 
 // settingsJSON mirrors library.Settings field for field, so the two convert.
 type settingsJSON struct {
-	Level    float64 `json:"level"`
-	EDR      bool    `json:"edr"`
-	Tint     int     `json:"tint"`
-	Gamma    float64 `json:"gamma"`
-	FontSize float64 `json:"fontSize"`
-	Spread   int     `json:"spread"`
-	Accent   string  `json:"accent"`
-	Images   int     `json:"images"` // image layer: 0 dim, 1 off, 2 full
+	Level      float64 `json:"level"`
+	EDR        bool    `json:"edr"`
+	Tint       int     `json:"tint"`
+	Gamma      float64 `json:"gamma"`
+	FontSize   float64 `json:"fontSize"`
+	Spread     int     `json:"spread"`
+	Accent     string  `json:"accent"`
+	Pictures   int     `json:"pictures"`   // 0 night, 1 original colors, 2 hidden
+	BookColors bool    `json:"bookColors"` // keep the hues of colored text
 }
 
 //export mole_library_settings
@@ -481,7 +517,9 @@ func mole_session_close(s C.int64_t) {
 		fail(err)
 	}
 	ss.mask.free()
+	ss.colors.free()
 	ss.images.free()
+	ss.gray.free()
 	sessions.remove(int64(s))
 }
 
@@ -589,10 +627,36 @@ func mole_session_chapters(s C.int64_t) *C.char {
 	return jsonString(out)
 }
 
+// mole_session_set_style sets how the next renders draw the pages. pictures
+// is 0 for night (photographs as they are, line art with its lightness
+// inverted so that its lines glow), 1 for original colors (every image as
+// on a white page) or 2 for hidden; bookColors is 1 to keep the hues of
+// colored text. It returns 1 if the style changed, which calls for a new
+// render, 0 if not, and -1 on error.
+//
+//export mole_session_set_style
+func mole_session_set_style(s C.int64_t, pictures, bookColors C.int) C.int {
+	ss, ok := sessions.get(int64(s))
+	if !ok {
+		fail(errBadHandle)
+		return -1
+	}
+	changed, err := ss.book.Reading().SetStyle(reading.Style{Pictures: mupdf.Pictures(pictures), BookColors: bookColors != 0})
+	if err != nil {
+		fail(err)
+		return -1
+	}
+	if !changed {
+		return 0
+	}
+	return 1
+}
+
 // mole_session_render draws the visible pages and returns the coverage mask
 // of their text and vector lines: one byte per pixel, rows of *stride bytes,
-// *width x *height pixels. Images are drawn into a second layer, read with
-// mole_session_image_mask. The buffer belongs to the session and stays
+// *width x *height pixels. The hues of colored text and the images are drawn
+// into layers of their own, read with mole_session_text_colors and
+// mole_session_image_layer. The buffer belongs to the session and stays
 // valid until the next render, layout or close.
 //
 //export mole_session_render
@@ -617,13 +681,76 @@ func mole_session_render(s C.int64_t, stride, width, height *C.int64_t) unsafe.P
 	return ss.mask.p
 }
 
-// mole_session_image_mask returns the image layer of the last render, laid
-// out like its mask (same size and *stride): one byte of luminance per pixel
-// on black. Photographs and dark pictures are drawn as they are, so a dark
-// cover stays dark; line art (mostly light images, such as diagrams) is
-// inverted so that its lines glow. *empty is set to 1 when no image is on
-// screen; the layer is then all zero. The buffer belongs to the session and
-// stays valid until the next render, layout or close.
+// maskSize returns the size in bytes of the text mask of r.
+func maskSize(r *reading.Session) int {
+	_, h := r.Geometry().PixelSize()
+	return r.Stride() * h
+}
+
+// colorLayer copies a four-byte layer of the last render into buf and
+// returns it, setting the sizes and *empty as the layer functions document.
+func colorLayer(ss *openBook, buf *cBuffer, layer []byte, drawn bool, stride, width, height *C.int64_t,
+	empty *C.int) unsafe.Pointer {
+	r := ss.book.Reading()
+	if err := buf.fillLayer(layer, drawn, 4*maskSize(r)); err != nil {
+		fail(err)
+		return nil
+	}
+	w, h := r.Geometry().PixelSize()
+	*stride, *width, *height = C.int64_t(4*r.Stride()), C.int64_t(w), C.int64_t(h)
+	*empty = 1
+	if drawn {
+		*empty = 0
+	}
+	return buf.p
+}
+
+// mole_session_text_colors returns the hues of the text of the last render,
+// laid out like its mask (same size) with four bytes per pixel and rows of
+// *stride bytes: RGBA in sRGB with premultiplied alpha, where alpha is the
+// coverage of the text drawn in a hue. Black, white and gray text is left
+// out, for the reader's tint, and dark hues are lightened to show on black;
+// the mask still holds the coverage of all text. *empty is set to 1 when no
+// colored text is on screen or the style does not keep the book's colors;
+// the layer is then all zero. The buffer belongs to the session and stays
+// valid until the next render, layout or close.
+//
+//export mole_session_text_colors
+func mole_session_text_colors(s C.int64_t, stride, width, height *C.int64_t, empty *C.int) unsafe.Pointer {
+	ss, ok := sessions.get(int64(s))
+	if !ok {
+		fail(errBadHandle)
+		return nil
+	}
+	layer, drawn := ss.book.Reading().ColorLayer()
+	return colorLayer(ss, &ss.colors, layer, drawn, stride, width, height, empty)
+}
+
+// mole_session_image_layer returns the images of the last render, laid out
+// like its mask (same size) with four bytes per pixel and rows of *stride
+// bytes: RGBA in sRGB with premultiplied alpha, which makes the color
+// channels the picture on black. The style says how images are drawn.
+// *empty is set to 1 when no image is on screen or pictures are hidden; the
+// layer is then all zero. The buffer belongs to the session and stays valid
+// until the next render, layout or close.
+//
+//export mole_session_image_layer
+func mole_session_image_layer(s C.int64_t, stride, width, height *C.int64_t, empty *C.int) unsafe.Pointer {
+	ss, ok := sessions.get(int64(s))
+	if !ok {
+		fail(errBadHandle)
+		return nil
+	}
+	layer, drawn := ss.book.Reading().ImageLayer()
+	return colorLayer(ss, &ss.images, layer, drawn, stride, width, height, empty)
+}
+
+// mole_session_image_mask returns the image layer of the last render in
+// gray, laid out like its mask (same size and *stride): one byte of
+// luminance per pixel on black. It predates mole_session_image_layer, which
+// has the colors. *empty is set to 1 when no image is on screen; the layer
+// is then all zero. The buffer belongs to the session and stays valid until
+// the next render, layout or close.
 //
 //export mole_session_image_mask
 func mole_session_image_mask(s C.int64_t, stride, width, height *C.int64_t, empty *C.int) unsafe.Pointer {
@@ -634,7 +761,14 @@ func mole_session_image_mask(s C.int64_t, stride, width, height *C.int64_t, empt
 	}
 	r := ss.book.Reading()
 	layer, drawn := r.ImageLayer()
-	if err := ss.images.fill(layer); err != nil {
+	size := maskSize(r)
+	var err error
+	if drawn && len(layer) == 4*size {
+		err = ss.gray.fill(luminance(layer))
+	} else {
+		err = ss.gray.clear(size)
+	}
+	if err != nil {
 		fail(err)
 		return nil
 	}
@@ -644,7 +778,71 @@ func mole_session_image_mask(s C.int64_t, stride, width, height *C.int64_t, empt
 	if drawn {
 		*empty = 0
 	}
-	return ss.images.p
+	return ss.gray.p
+}
+
+// luminance returns the luma of each pixel of an RGBA layer.
+func luminance(rgba []byte) []byte {
+	out := make([]byte, len(rgba)/4)
+	for i := range out {
+		p := rgba[4*i : 4*i+3]
+		out[i] = byte((77*int(p[0]) + 150*int(p[1]) + 29*int(p[2])) >> 8)
+	}
+	return out
+}
+
+type pictureJSON struct {
+	Page  int      `json:"page"`
+	Index int      `json:"index"`
+	Rect  rectJSON `json:"rect"`
+}
+
+// mole_session_image_at returns the picture at the point x, y of the view as
+// JSON {"page":int,"index":int,"rect":Rect}: the page that draws it, its
+// place among the images of that page and where it is on screen. It returns
+// the JSON literal null when no picture is there (images smaller than 16
+// points do not count), and a null pointer only on error. The caller frees
+// the result with mole_free.
+//
+//export mole_session_image_at
+func mole_session_image_at(s C.int64_t, x, y C.double) *C.char {
+	ss, ok := sessions.get(int64(s))
+	if !ok {
+		fail(errBadHandle)
+		return nil
+	}
+	p, ok, err := ss.book.Reading().PictureAt(float64(x), float64(y))
+	if err != nil {
+		fail(err)
+		return nil
+	}
+	if !ok {
+		return jsonString(nil)
+	}
+	return jsonString(pictureJSON{Page: p.Page, Index: p.Index, Rect: rectJSON(p.Rect)})
+}
+
+// mole_session_image_pixels draws a picture that mole_session_image_at
+// reported, by its page and index, as it looks on a white page: in its
+// colors, at its own resolution (a drawing that scales at the largest size)
+// and at most 4096 pixels on its longer side. It returns opaque RGBA pixels,
+// eight bits per channel, *width x *height with rows of 4 * *width bytes,
+// in a buffer the caller frees with mole_free; or a null pointer on error.
+//
+//export mole_session_image_pixels
+func mole_session_image_pixels(s, page, index C.int64_t, width, height *C.int64_t) unsafe.Pointer {
+	ss, ok := sessions.get(int64(s))
+	if !ok {
+		fail(errBadHandle)
+		return nil
+	}
+	img, err := ss.book.Reading().PicturePixels(int(page), int(index))
+	if err != nil {
+		fail(err)
+		return nil
+	}
+	*width, *height = C.int64_t(img.Rect.Dx()), C.int64_t(img.Rect.Dy())
+	return C.CBytes(img.Pix)
 }
 
 // Text: anchors, selection and search.
