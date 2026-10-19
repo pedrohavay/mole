@@ -1,0 +1,244 @@
+/* Mole: English strings. Keys are grouped by the part of the app that uses them. */
+
+/* App */
+"app.name" = "Mole";
+
+/* Common actions */
+"action.cancel" = "Cancel";
+"action.clear" = "Clear";
+"action.open" = "Open";
+"action.revealInFinder" = "Show in Finder";
+"action.copy" = "Copy";
+"action.done" = "Done";
+
+/* Compact ages: 49m, 3h, 2d */
+"age.now" = "now";
+"age.minutes" = "%ldm";
+"age.hours" = "%ldh";
+"age.days" = "%ldd";
+
+/* Accent colors */
+"accent.red" = "Red";
+"accent.orange" = "Orange";
+"accent.amber" = "Amber";
+"accent.green" = "Green";
+"accent.teal" = "Teal";
+"accent.blue" = "Blue";
+"accent.violet" = "Violet";
+"accent.pink" = "Pink";
+
+/* Books */
+"book.added" = "Added";
+"book.finished" = "Finished";
+"book.info" = "Get Info";
+"book.lastOpened" = "Last read";
+"book.new" = "NEW";
+"book.percentRead" = "%ld%% read";
+"book.unread" = "Not started";
+"count.books.one" = "1 book";
+"count.books.other" = "%ld books";
+
+/* Contents panel */
+"contents.title" = "Contents";
+"contents.show" = "Show Contents";
+"contents.hide" = "Hide Contents";
+"contents.toggle.help" = "Contents (⌥⌘C)";
+"contents.empty.title" = "No contents";
+"contents.empty.message" = "This book has no table of contents.";
+"contents.page" = "page %ld";
+"panel.contents" = "Contents";
+"panel.bookmarks" = "Bookmarks";
+"panel.notes" = "Notes";
+"panel.search" = "Search";
+"place.page" = "Page %ld";
+
+/* EDR state */
+"edr.active" = "EDR on";
+"edr.idle" = "EDR standing by";
+
+/* Errors */
+"error.core.unknown" = "Unknown error in the reading core.";
+"error.library.title" = "Cannot open the library";
+"error.library.notOpened" = "The library was not opened.";
+"error.library.reveal" = "Show in Finder";
+"error.library.quit" = "Quit Mole";
+"error.metal" = "Metal is not available on this Mac.";
+"error.reader.title" = "Cannot show the page";
+"error.session.closed" = "The book is closed.";
+"open.failed" = "Cannot open the book";
+"open.failed.detail" = "Mole could not read this book. %@";
+"remove.failed" = "Cannot remove the book";
+
+/* Import */
+"import.prompt" = "Add";
+"import.progress" = "Adding %ld…";
+"import.failed.title" = "Some files were not added";
+"import.failed.detail" = "Could not read: %@.";
+
+/* Library */
+"library.add" = "Add Books…";
+"library.add.help" = "Add books (⌘O)";
+"library.empty.title" = "Your shelf is empty";
+"library.empty.message" = "Add EPUB books to start reading. Only the letters light up; the rest of the screen stays dark.";
+"library.noResults.title" = "No results";
+"library.noResults.message" = "No book matches “%@”.";
+"library.options" = "Options";
+"library.remove" = "Remove from Library…";
+"library.search" = "Search title or author";
+"remove.confirm.title" = "Remove “%@” from the library?";
+"remove.confirm.detail" = "Mole’s copy of the book, its highlights and its bookmarks are deleted. The file you added is not touched.";
+"remove.confirm.action" = "Remove";
+"missing.title" = "The file of “%@” is missing";
+"missing.detail" = "It was moved or deleted from %@.";
+"missing.remove" = "Remove from Library";
+
+/* Shelves */
+"shelf.all" = "All Books";
+"shelf.reading" = "Reading";
+"shelf.unread" = "Not Started";
+"shelf.finished" = "Finished";
+"shelf.empty.title" = "Nothing here yet";
+"shelf.empty.all" = "Add EPUB books to start reading.";
+"shelf.empty.reading" = "Books you start appear here until you finish them.";
+"shelf.empty.unread" = "Books you have not opened yet appear here.";
+"shelf.empty.finished" = "Books you read to the end appear here.";
+
+/* Light */
+"light.title" = "Text Brightness";
+"light.level" = "Brightness";
+"light.readout" = "Text at %@× SDR white";
+"light.headroom" = "EDR headroom %@× of %@×";
+"light.edr" = "Extended range (EDR)";
+"light.tint" = "Text color";
+"tint.white" = "White";
+"tint.warm" = "Warm";
+"tint.amber" = "Amber";
+"tint.red" = "Red";
+
+/* Text */
+"text.title" = "Text";
+"text.size" = "Size";
+"text.bigger" = "Bigger Text";
+"text.smaller" = "Smaller Text";
+"text.points" = "%ld pt";
+"text.stroke" = "Weight";
+"text.spread" = "Pages";
+"stroke.thin" = "Thin";
+"stroke.regular" = "Regular";
+"stroke.bold" = "Bold";
+"spread.automatic" = "Automatic";
+"spread.single" = "One Page";
+"spread.double" = "Two Pages";
+"images.title" = "Pictures";
+"images.dim" = "Dim";
+"images.off" = "Hidden";
+"images.full" = "Bright";
+
+/* Bookmarks, highlights and notes */
+"bookmark.add" = "Add Bookmark";
+"bookmark.remove" = "Remove Bookmark";
+"bookmark.delete" = "Delete Bookmark";
+"bookmark.untitled" = "Bookmark";
+"bookmarks.empty.title" = "No bookmarks";
+"bookmarks.empty.message" = "Press ⌘D, or click the ribbon, to bookmark the page you are reading.";
+"highlight.title" = "Highlight";
+"highlight.selection" = "Highlight Selection";
+"highlight.in" = "Highlight in %@";
+"highlight.color" = "Color";
+"highlight.remove" = "Remove Highlight";
+"highlight.yellow" = "Yellow";
+"highlight.green" = "Green";
+"highlight.blue" = "Blue";
+"highlight.pink" = "Pink";
+"highlight.violet" = "Violet";
+"note.add" = "Add Note";
+"note.edit" = "Edit Note";
+"note.placeholder" = "Write a note…";
+"notes.empty.title" = "No highlights";
+"notes.empty.message" = "Select text on the page to highlight it or add a note.";
+"notes.onlyWithNotes" = "Only Highlights with Notes";
+"notes.copyAll" = "Copy All as Markdown";
+"annotation.failed" = "Cannot save the change";
+
+/* Search in a book */
+"search.prompt" = "Search this book";
+"search.selection" = "Search for Selection";
+"search.running" = "Searching… %ld found";
+"search.count.one" = "1 result";
+"search.count.other" = "%ld results";
+"search.position" = "%ld of %ld";
+"search.truncated" = "First %ld results";
+"search.empty.title" = "No results";
+"search.empty.message" = "Nothing in this book matches “%@”.";
+
+/* Menus */
+"menu.addBooks" = "Add Books…";
+"menu.closeBook" = "Close Book";
+"menu.go" = "Go";
+"menu.nextTab" = "Next Tab";
+"menu.previousTab" = "Previous Tab";
+"menu.start" = "Beginning of Book";
+"menu.end" = "End of Book";
+"menu.light" = "Light";
+"menu.brighter" = "Brighter Text";
+"menu.dimmer" = "Dimmer Text";
+"menu.enterFullScreen" = "Enter Full Screen";
+"menu.exitFullScreen" = "Exit Full Screen";
+"menu.shortcuts" = "Keyboard Shortcuts";
+"menu.book" = "Book";
+"menu.find" = "Find in Book…";
+"menu.findNext" = "Find Next";
+"menu.findPrevious" = "Find Previous";
+
+/* Sidebar and tabs */
+"sidebar.show" = "Show Sidebar";
+"sidebar.hide" = "Hide Sidebar";
+"sidebar.open" = "Open";
+"sidebar.open.empty" = "Open a book from the library.";
+"sidebar.recent" = "Recent";
+"sidebar.recent.help" = "Click to find it in the library, double-click to open it.";
+"tab.library" = "Library";
+"tab.close" = "Close";
+
+/* Status bar */
+"status.pages.single" = "%ld of %ld · %ld%%";
+"status.level" = "%ld%%";
+"status.pages.range" = "%ld–%ld of %ld · %ld%%";
+
+/* Settings */
+"settings.general" = "General";
+"settings.reading" = "Reading";
+"settings.shortcuts" = "Shortcuts";
+"settings.appearance" = "Appearance";
+"settings.accent" = "Accent color";
+"settings.accent.custom" = "Custom color";
+"settings.accent.note" = "Used for selection, the active tab and controls. The page itself never takes the accent.";
+"settings.language" = "Language";
+"settings.language.note" = "Mole follows the language set in System Settings › General › Language & Region. English and Brazilian Portuguese are available.";
+"settings.text" = "Text";
+"settings.light" = "Light";
+"settings.light.note" = "Brightness is a share of what the screen can show above SDR white right now. Without EDR the text stops at SDR white.";
+"settings.shortcuts.reading" = "While reading";
+"settings.shortcuts.window" = "Window and tabs";
+
+/* Shortcuts */
+"shortcut.nextPage" = "Next page";
+"shortcut.previousPage" = "Previous page";
+"shortcut.startEnd" = "Beginning or end of the book";
+"shortcut.light" = "Brighter or dimmer text";
+"shortcut.textSize" = "Bigger or smaller text";
+"shortcut.edr" = "Turn EDR on or off";
+"shortcut.tint" = "Next text color";
+"shortcut.contents" = "Show or hide the contents";
+"shortcut.fullScreen" = "Full screen";
+"shortcut.exitFullScreen" = "Leave full screen";
+"shortcut.addBooks" = "Add books";
+"shortcut.closeBook" = "Close the book";
+"shortcut.library" = "Library";
+"shortcut.tabs" = "Open books, in tab order";
+"shortcut.cycleTabs" = "Next or previous tab";
+"shortcut.sidebar" = "Show or hide the sidebar";
+"shortcut.settings" = "Settings";
+
+/* Key names */
+"key.space" = "Space";

@@ -1,0 +1,346 @@
+import AppKit
+import Foundation
+import Observation
+
+/// PageMark is something painted under the text of the visible pages, in
+/// view points from the top left.
+struct PageMark: Equatable {
+    enum Kind: Equatable {
+        case highlight(color: Int)
+        case selection
+        case hit(current: Bool)
+    }
+
+    var rect: CGRect
+    var kind: Kind
+}
+
+/// ReaderTab is an open book: its session with the core, what the reader
+/// shows of it, and the reader's selection, annotations and search.
+@Observable @MainActor
+final class ReaderTab: Identifiable {
+    let book: Book
+    let session: Session
+    private let library: Library
+
+    private(set) var state = SessionState()
+    private(set) var chapters: [Chapter] = []
+    /// Revision changes whenever the visible pages change and must be redrawn.
+    private(set) var revision = 0
+    /// VisibleRange is the text on the visible pages.
+    private(set) var visibleRange: TextRange?
+    /// Marks are the highlights, selection and search hits on screen.
+    private(set) var marks: [PageMark] = []
+    /// PageText is the text on screen, kept only while VoiceOver runs.
+    private(set) var pageText = ""
+
+    private(set) var annotations: [Annotation] = []
+    /// Selection is the text the reader dragged over, if any.
+    private(set) var selection: TextRange?
+    /// IsSelecting is set while the pointer drags out a selection.
+    var isSelecting = false
+    @ObservationIgnored private var selectionStart: Anchor?
+
+    /// The search of the book, if one was asked for.
+    private(set) var query = ""
+    private(set) var hits: [Search.Hit] = []
+    private(set) var searchDone = true
+    private(set) var searchTruncated = false
+    /// CurrentHit indexes hits: the match last shown.
+    private(set) var currentHit: Int?
+    @ObservationIgnored private var search: Search?
+    @ObservationIgnored private var searchPoll: Timer?
+
+    nonisolated var id: Int64 { book.id }
+
+    init(book: Book, session: Session, library: Library) {
+        self.book = book
+        self.session = session
+        self.library = library
+        reloadAnnotations()
+    }
+
+    // MARK: Layout and pages
+
+    /// Lays the book out for a view; see Session.layout.
+    func layout(width: Double, height: Double, scale: Double, fontSize: Double, spread: Spread) throws {
+        try session.layout(width: width, height: height, scale: scale, fontSize: fontSize, spread: spread)
+        chapters = (try? session.chapters()) ?? []
+        refresh()
+    }
+
+    func turn(_ screens: Int) {
+        if session.turn(screens) { refresh() }
+    }
+
+    func go(to page: Int) {
+        if session.go(to: page) { refresh() }
+    }
+
+    func go(to anchor: Anchor) {
+        if (try? session.go(to: anchor)) == true { refresh() }
+    }
+
+    func goToStart() { go(to: 0) }
+
+    func goToEnd() { go(to: max(0, state.pages - 1)) }
+
+    /// Returns the page, from 1, that holds anchor in the current layout.
+    func pageNumber(of anchor: Anchor) -> Int? {
+        (try? session.page(of: anchor)).map { $0 + 1 }
+    }
+
+    /// Returns the top-level chapter that holds anchor.
+    func chapter(of anchor: Anchor) -> Chapter? {
+        guard let page = try? session.page(of: anchor) else { return nil }
+        return chapters.last { $0.level == 0 && $0.page <= page }
+    }
+
+    private func refresh() {
+        if let state = try? session.state() { self.state = state }
+        visibleRange = try? session.visibleRange()
+        if NSWorkspace.shared.isVoiceOverEnabled, let visibleRange {
+            pageText = (try? session.text(of: visibleRange)) ?? ""
+        }
+        refreshMarks()
+        revision += 1
+    }
+
+    /// The top-level chapter that holds the first visible page.
+    var currentChapter: Chapter? {
+        chapters.last { $0.level == 0 && $0.page <= state.page }
+    }
+
+    // MARK: Marks
+
+    private func refreshMarks() {
+        guard let visible = visibleRange else {
+            marks = []
+            return
+        }
+        var marks: [PageMark] = []
+        func add(_ range: TextRange, _ kind: PageMark.Kind) {
+            guard range.overlaps(visible), let rects = try? session.rects(of: range) else { return }
+            marks += rects.map { PageMark(rect: $0, kind: kind) }
+        }
+        for annotation in annotations where annotation.kind == .highlight {
+            add(annotation.range, .highlight(color: annotation.color))
+        }
+        for (index, hit) in hits.enumerated() where hit.range.overlaps(visible) {
+            add(hit.range, .hit(current: index == currentHit))
+        }
+        if let selection { add(selection, .selection) }
+        if marks != self.marks { self.marks = marks }
+    }
+
+    // MARK: Selection
+
+    /// Starts a selection at a point of the view, as pressing the mouse
+    /// before a drag does. It reports whether the point is over text.
+    @discardableResult
+    func beginSelection(at point: CGPoint) -> Bool {
+        selectionStart = (try? session.anchor(at: point)) ?? nil
+        return selectionStart != nil
+    }
+
+    /// Extends the selection to a point of the view, as a drag does. Over
+    /// the gap between paragraphs the selection keeps its last end.
+    func extendSelection(to point: CGPoint) {
+        guard let start = selectionStart, let end = (try? session.anchor(at: point)) ?? nil else { return }
+        let range = TextRange.spanning(start, end)
+        guard range != selection else { return }
+        selection = range
+        refreshMarks()
+    }
+
+    func clearSelection() {
+        guard selection != nil else { return }
+        selection = nil
+        refreshMarks()
+    }
+
+    /// Returns the selected text, or nil when nothing is selected.
+    func selectedText() -> String? {
+        guard let selection else { return nil }
+        return try? session.text(of: selection)
+    }
+
+    /// Returns the boxes of the selection on screen, in view points.
+    func selectionRects() -> [CGRect] {
+        marks.filter { $0.kind == .selection }.map(\.rect)
+    }
+
+    // MARK: Annotations
+
+    func reloadAnnotations() {
+        do {
+            annotations = try library.annotations(of: book.id)
+        } catch {
+            NSLog("Mole: cannot read annotations of %@: %@", book.title, error.localizedDescription)
+        }
+        refreshMarks()
+    }
+
+    var bookmarks: [Annotation] { annotations.filter { $0.kind == .bookmark } }
+
+    /// Highlights are the highlighted passages, with or without a note.
+    var highlights: [Annotation] { annotations.filter { $0.kind == .highlight } }
+
+    /// Reports whether a bookmark falls on the visible pages.
+    var isBookmarked: Bool {
+        guard let visibleRange else { return false }
+        return bookmarks.contains { visibleRange.contains($0.range.start) }
+    }
+
+    /// Bookmarks the visible pages, or removes their bookmarks.
+    func toggleBookmark() throws {
+        guard let visibleRange else { return }
+        let here = bookmarks.filter { visibleRange.contains($0.range.start) }
+        if here.isEmpty {
+            let text = (try? session.text(of: visibleRange)) ?? ""
+            let bookmark = Annotation(kind: .bookmark,
+                                      range: TextRange(start: visibleRange.start, end: visibleRange.start),
+                                      color: 0, note: "", text: Self.excerpt(text, limit: 160))
+            _ = try library.add(bookmark, to: book.id)
+        } else {
+            for bookmark in here { try library.remove(bookmark) }
+        }
+        reloadAnnotations()
+    }
+
+    /// Highlights the selection in color and returns the new highlight.
+    @discardableResult
+    func highlightSelection(color: Int, note: String = "") throws -> Annotation? {
+        guard let selection else { return nil }
+        // A selection over an existing highlight recolors it instead.
+        if var existing = highlights.first(where: { $0.range == selection }) {
+            existing.color = color
+            if !note.isEmpty { existing.note = note }
+            try library.update(existing)
+            clearSelection()
+            reloadAnnotations()
+            return existing
+        }
+        let text = (try? session.text(of: selection)) ?? ""
+        let highlight = try library.add(Annotation(kind: .highlight, range: selection, color: color, note: note,
+                                                   text: Self.excerpt(text, limit: 1000)), to: book.id)
+        clearSelection()
+        reloadAnnotations()
+        return highlight
+    }
+
+    /// Saves a changed color or note.
+    func update(_ annotation: Annotation) throws {
+        try library.update(annotation)
+        reloadAnnotations()
+    }
+
+    func remove(_ annotation: Annotation) throws {
+        try library.remove(annotation)
+        reloadAnnotations()
+    }
+
+    /// Returns the highlight under a point of the view, if any.
+    func highlight(at point: CGPoint) -> Annotation? {
+        guard let anchor = (try? session.anchor(at: point)) ?? nil else { return nil }
+        return highlights.last { $0.range.contains(anchor) }
+    }
+
+    /// Returns text shortened to about limit characters at a word boundary.
+    static func excerpt(_ text: String, limit: Int) -> String {
+        let flat = text.split(whereSeparator: \.isNewline).joined(separator: " ")
+        guard flat.count > limit else { return flat }
+        let cut = flat.prefix(limit)
+        let end = cut.lastIndex(of: " ") ?? cut.endIndex
+        return String(cut[..<end]) + "…"
+    }
+
+    // MARK: Search
+
+    /// Searches the book for query, replacing any search before it. An empty
+    /// query clears the search.
+    func find(_ query: String) {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query != self.query else { return }
+        stopSearch()
+        self.query = query
+        hits = []
+        currentHit = nil
+        searchTruncated = false
+        guard !query.isEmpty else {
+            searchDone = true
+            refreshMarks()
+            return
+        }
+        do {
+            search = try session.search(query)
+            searchDone = false
+            searchPoll = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.pollSearch() }
+            }
+            pollSearch()
+        } catch {
+            searchDone = true
+            NSLog("Mole: cannot search %@: %@", book.title, error.localizedDescription)
+        }
+    }
+
+    private func pollSearch() {
+        guard let search else { return }
+        do {
+            let results = try search.results()
+            if results.hits.count != hits.count {
+                hits = results.hits
+                refreshMarks()
+            }
+            searchTruncated = results.truncated
+            if results.done {
+                searchDone = true
+                stopPolling()
+            }
+        } catch {
+            searchDone = true
+            stopPolling()
+        }
+    }
+
+    private func stopPolling() {
+        searchPoll?.invalidate()
+        searchPoll = nil
+    }
+
+    private func stopSearch() {
+        stopPolling()
+        search = nil
+    }
+
+    /// Shows hit index and marks it as the current one.
+    func showHit(_ index: Int) {
+        guard hits.indices.contains(index) else { return }
+        currentHit = index
+        go(to: hits[index].range.start)
+        refreshMarks()
+    }
+
+    /// Shows the next (or, with step -1, previous) hit after the current one,
+    /// or after the visible pages when none is current.
+    func showHit(step: Int) {
+        guard !hits.isEmpty else { return }
+        let next: Int
+        if let currentHit {
+            next = (currentHit + step + hits.count) % hits.count
+        } else if let start = visibleRange?.start {
+            let after = hits.firstIndex { $0.range.start >= start } ?? 0
+            next = step > 0 ? after : (after - 1 + hits.count) % hits.count
+        } else {
+            next = 0
+        }
+        showHit(next)
+    }
+
+    /// Ends the session's work before the tab goes away.
+    func close() {
+        stopSearch()
+        session.close()
+    }
+}

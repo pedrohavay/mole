@@ -1,0 +1,151 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Mole (flat)</title>
+  <defs>
+    <clipPath id="squircle">
+      <rect x="100" y="100" width="824" height="824" rx="185" ry="185"/>
+    </clipPath>
+    <clipPath id="bodyClip">
+      <path d="M 236 940 C 226 620, 320 262, 512 262 C 704 262, 798 620, 788 940 Z"/>
+    </clipPath>
+
+    <g id="text" fill="none" stroke-width="5.5" stroke-linecap="round">
+      <path d="M 305.8 649.0 Q 396.4 639.0 488.4 658.6"/>
+      <path d="M 718.2 649.0 Q 627.6 639.0 535.6 658.6"/>
+      <path d="M 301.1 667.1 Q 394.5 657.4 488.2 677.3"/>
+      <path d="M 722.9 667.1 Q 629.5 657.4 535.8 677.3"/>
+      <path d="M 296.4 685.1 Q 392.6 675.7 487.9 696.0"/>
+      <path d="M 727.6 685.1 Q 631.4 675.7 536.1 696.0"/>
+      <path d="M 291.7 703.2 Q 390.7 694.1 487.6 714.7"/>
+      <path d="M 732.3 703.2 Q 633.3 694.1 536.4 714.7"/>
+      <path d="M 287.0 721.3 Q 388.8 712.5 487.3 733.3"/>
+      <path d="M 737.0 721.3 Q 635.2 712.5 536.7 733.3"/>
+      <path d="M 282.3 739.4 Q 387.0 730.9 487.0 752.0"/>
+      <path d="M 741.7 739.4 Q 637.0 730.9 537.0 752.0"/>
+      <path d="M 277.6 757.5 Q 385.1 749.2 486.7 770.7"/>
+      <path d="M 746.4 757.5 Q 638.9 749.2 537.3 770.7"/>
+      <path d="M 272.9 775.5 Q 383.2 767.6 486.4 789.3"/>
+      <path d="M 751.1 775.5 Q 640.8 767.6 537.6 789.3"/>
+      <path d="M 268.2 793.6 Q 381.3 786.0 486.1 808.0"/>
+      <path d="M 755.8 793.6 Q 642.7 786.0 537.9 808.0"/>
+    </g>
+
+    <g id="pawL">
+      <ellipse cx="406" cy="585" rx="52" ry="30" fill="#eba49d"/>
+      <g fill="#d98b85">
+        <circle cx="372" cy="598" r="9"/>
+        <circle cx="389" cy="601" r="9"/>
+        <circle cx="406" cy="602" r="9"/>
+        <circle cx="423" cy="601" r="9"/>
+        <circle cx="440" cy="598" r="9"/>
+      </g>
+      <g fill="#f7eedf">
+        <path d="M 365 600 Q 364 622 371 632 Q 379 621 379 600 Z"/>
+        <path d="M 382 603 Q 381 626 389 636 Q 396 625 396 603 Z"/>
+        <path d="M 399 604 Q 398 628 406 638 Q 413 627 413 604 Z"/>
+        <path d="M 416 603 Q 416 625 423 636 Q 431 624 430 603 Z"/>
+        <path d="M 433 600 Q 433 620 440 631 Q 447 620 447 600 Z"/>
+      </g>
+    </g>
+  </defs>
+
+  <g clip-path="url(#squircle)">
+    <!-- Subsolo -->
+    <rect x="100" y="100" width="824" height="824" fill="#241a14"/>
+    <g fill="none" stroke="#3a2b20" stroke-linecap="round">
+      <path d="M 210 100 C 222 150, 200 190, 230 240 C 246 266, 238 292, 252 318" stroke-width="7"/>
+      <path d="M 226 196 C 250 204, 262 222, 286 226" stroke-width="4"/>
+      <path d="M 372 100 C 378 128, 364 150, 372 186" stroke-width="5"/>
+      <path d="M 812 100 C 800 160, 832 200, 814 258 C 806 282, 816 300, 808 322" stroke-width="7"/>
+      <path d="M 816 214 C 792 220, 784 236, 762 240" stroke-width="4"/>
+      <path d="M 660 100 C 664 120, 652 136, 660 160" stroke-width="4"/>
+    </g>
+    <g fill="#33261c">
+      <ellipse cx="168" cy="420" rx="12" ry="9"/>
+      <ellipse cx="190" cy="448" rx="7" ry="5"/>
+      <ellipse cx="862" cy="380" rx="14" ry="10"/>
+      <ellipse cx="160" cy="612" rx="9" ry="7"/>
+      <ellipse cx="872" cy="640" rx="11" ry="8"/>
+      <ellipse cx="300" cy="150" rx="8" ry="6"/>
+      <ellipse cx="732" cy="170" rx="10" ry="7"/>
+    </g>
+
+    <!-- Corpo: dois tons chapados -->
+    <path d="M 236 940 C 226 620, 320 262, 512 262 C 704 262, 798 620, 788 940 Z" fill="#54483f"/>
+    <circle cx="880" cy="640" r="300" fill="#483d36" clip-path="url(#bodyClip)"/>
+    <g fill="none" stroke="#54483f" stroke-width="6" stroke-linecap="round">
+      <path d="M 500 266 Q 502 246 514 238"/>
+      <path d="M 516 265 Q 526 248 542 246"/>
+    </g>
+
+    <!-- Bochechas -->
+    <ellipse cx="376" cy="506" rx="30" ry="17" fill="#8a5e5d"/>
+    <ellipse cx="648" cy="506" rx="30" ry="17" fill="#7c5654"/>
+
+    <!-- Focinho -->
+    <path d="M 488 398 C 478 455, 466 508, 468 538 Q 512 572 556 538 C 558 508, 546 455, 536 398 Z" fill="#8a6d64"/>
+    <path d="M 512 398 L 536 398 C 546 455, 558 508, 556 538 Q 536 554 512 558 Z" fill="#7a5f57"/>
+
+    <!-- Bigodes -->
+    <g fill="none" stroke="#a8958a" stroke-width="3" stroke-linecap="round">
+      <path d="M 478 538 Q 440 526 402 528"/>
+      <path d="M 478 550 Q 440 552 406 564"/>
+      <path d="M 546 538 Q 584 526 622 528"/>
+      <path d="M 546 550 Q 584 552 618 564"/>
+    </g>
+
+    <!-- Nariz -->
+    <ellipse cx="512" cy="556" rx="42" ry="30" fill="#f08c9b"/>
+    <ellipse cx="497" cy="563" rx="8" ry="6" fill="#8a3a48"/>
+    <ellipse cx="527" cy="563" rx="8" ry="6" fill="#8a3a48"/>
+    <ellipse cx="499" cy="544" rx="12" ry="5" fill="#ffd3d9"/>
+
+    <!-- Óculos -->
+    <g fill="none" stroke="#e8bb66" stroke-linecap="round">
+      <path d="M 378 416 L 334 400" stroke-width="9"/>
+      <path d="M 646 416 L 690 400" stroke-width="9"/>
+      <path d="M 494 412 Q 512 394 530 412" stroke-width="10"/>
+    </g>
+    <circle cx="438" cy="425" r="60" fill="#625549" stroke="#e8bb66" stroke-width="11"/>
+    <circle cx="586" cy="425" r="60" fill="#625549" stroke="#e8bb66" stroke-width="11"/>
+    <!-- Olhos -->
+    <circle cx="438" cy="440" r="10" fill="#0e0a08"/>
+    <circle cx="586" cy="440" r="10" fill="#0e0a08"/>
+    <circle cx="441" cy="436" r="3" fill="#ffffff"/>
+    <circle cx="589" cy="436" r="3" fill="#ffffff"/>
+
+    <g fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" opacity="0.7">
+      <path d="M 402 400 A 44 44 0 0 1 430 382"/>
+      <path d="M 550 400 A 44 44 0 0 1 578 382"/>
+    </g>
+
+    <!-- Solo -->
+    <path d="M 100 800 C 180 770, 250 790, 300 786 C 400 778, 620 778, 724 786 C 780 790, 850 770, 924 800 L 924 924 L 100 924 Z" fill="#3b2a1e"/>
+    <g fill="#4d3727">
+      <circle cx="222" cy="790" r="22"/>
+      <circle cx="190" cy="806" r="16"/>
+      <circle cx="252" cy="800" r="14"/>
+      <circle cx="802" cy="790" r="22"/>
+      <circle cx="834" cy="806" r="16"/>
+      <circle cx="772" cy="800" r="14"/>
+      <ellipse cx="160" cy="862" rx="12" ry="8"/>
+      <ellipse cx="880" cy="872" rx="14" ry="9"/>
+      <ellipse cx="318" cy="900" rx="9" ry="6"/>
+      <ellipse cx="716" cy="904" rx="10" ry="6"/>
+    </g>
+
+    <!-- Livro -->
+    <path d="M 512 632 Q 400 606 288 620 L 222 832 Q 380 820 512 852 Q 644 820 802 832 L 736 620 Q 624 606 512 632 Z" fill="#2f6470"/>
+    <path d="M 240 818 Q 380 806 506 836 L 506 846 Q 380 818 234 830 Z" fill="#4a423c"/>
+    <path d="M 784 818 Q 644 806 518 836 L 518 846 Q 644 818 790 830 Z" fill="#4a423c"/>
+    <path d="M 506 622 Q 400 596 300 612 L 240 818 Q 380 806 506 836 Z" fill="#2b2522"/>
+    <path d="M 518 622 Q 624 596 724 612 L 784 818 Q 644 806 518 836 Z" fill="#25201d"/>
+    <path d="M 512 626 L 512 846" stroke="#141110" stroke-width="7"/>
+
+    <!-- Texto -->
+    <use xlink:href="#text" stroke="#fbf1de" stroke-opacity="0.6"/>
+
+    <!-- Patas -->
+    <use xlink:href="#pawL"/>
+    <use xlink:href="#pawL" transform="matrix(-1 0 0 1 1024 0)"/>
+  </g>
+</svg>

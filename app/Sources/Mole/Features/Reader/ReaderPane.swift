@@ -1,0 +1,139 @@
+import AppKit
+import SwiftUI
+
+/// ReaderPane shows an open book on the EDR canvas, with the controls that
+/// float over it: the selection bar, the highlight editor and the bookmark
+/// ribbon.
+@MainActor
+struct ReaderPane: View {
+    @Environment(AppModel.self) private var model
+    let tab: ReaderTab
+    @State private var editing: HighlightEdit?
+
+    /// HighlightEdit is a highlight being edited and where its popover points.
+    struct HighlightEdit: Identifiable {
+        let annotation: Annotation
+        let anchor: CGRect
+        var id: Int64 { annotation.id }
+    }
+
+    var body: some View {
+        if case .failure(let error) = EDRPipeline.shared {
+            EmptyState(symbol: "exclamationmark.triangle", title: L10n.text("error.reader.title"),
+                       message: error.localizedDescription)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else {
+            GeometryReader { geometry in
+                ZStack(alignment: .topLeading) {
+                    ReaderCanvas(model: model, tab: tab, revision: tab.revision, gain: model.gain,
+                                 tint: model.settings.tint, gamma: model.settings.gamma,
+                                 fontSize: model.settings.fontSize, spread: model.settings.spread,
+                                 images: model.settings.images,
+                                 marks: tab.marks, accentLight: model.accentLight) { annotation, point in
+                        editing = HighlightEdit(annotation: annotation,
+                                                anchor: CGRect(x: point.x - 1, y: point.y - 1, width: 2, height: 2))
+                    }
+                    .accessibilityElement()
+                    .accessibilityLabel(tab.book.title)
+                    .accessibilityValue(tab.pageText.isEmpty ? (tab.currentChapter?.title ?? "") : tab.pageText)
+                    if tab.isBookmarked {
+                        bookmarkRibbon(width: geometry.size.width)
+                    }
+                    if let bar = selectionBarPosition(in: geometry.size) {
+                        SelectionBar(tab: tab) { annotation in
+                            editing = HighlightEdit(annotation: annotation, anchor: CGRect(origin: bar, size: .zero))
+                        }
+                        .position(bar)
+                        .transition(.opacity)
+                    }
+                    if let editing {
+                        Color.clear
+                            .frame(width: max(2, editing.anchor.width), height: max(2, editing.anchor.height))
+                            .offset(x: editing.anchor.minX, y: editing.anchor.minY)
+                            .popover(isPresented: Binding { self.editing != nil } set: { if !$0 { self.editing = nil } },
+                                     arrowEdge: .top) {
+                                HighlightEditor(tab: tab, annotation: editing.annotation) { self.editing = nil }
+                            }
+                    }
+                }
+            }
+            .background(Theme.page)
+            .animation(.easeOut(duration: 0.12), value: tab.selection == nil || tab.isSelecting)
+        }
+    }
+
+    /// Returns where the selection bar goes: centered above the selection,
+    /// or below it when the selection starts near the top.
+    private func selectionBarPosition(in size: CGSize) -> CGPoint? {
+        guard tab.selection != nil, !tab.isSelecting else { return nil }
+        let rects = tab.selectionRects()
+        guard let first = rects.first, let last = rects.last else { return nil }
+        let union = rects.dropFirst().reduce(first) { $0.union($1) }
+        let x = union.midX.clamped(to: 140...max(140, size.width - 140))
+        let above = first.minY - 26
+        return CGPoint(x: x, y: above > 24 ? above : last.maxY + 26)
+    }
+
+    private func bookmarkRibbon(width: CGFloat) -> some View {
+        Button {
+            model.toggleBookmark()
+        } label: {
+            Image(systemName: "bookmark.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(model.accent.opacity(0.85))
+        }
+        .buttonStyle(.plain)
+        .help(L10n.text("bookmark.remove"))
+        .accessibilityLabel(L10n.text("bookmark.remove"))
+        .position(x: width - 34, y: 18)
+    }
+}
+
+/// ReaderCanvas hosts the Metal view. Its parameters are the values that
+/// require a redraw, so SwiftUI calls updateNSView whenever one changes.
+@MainActor
+struct ReaderCanvas: NSViewRepresentable {
+    let model: AppModel
+    let tab: ReaderTab
+    let revision: Int
+    let gain: Double
+    let tint: Int
+    let gamma: Double
+    let fontSize: Double
+    let spread: Spread
+    let images: ImageLight
+    let marks: [PageMark]
+    let accentLight: SIMD3<Float>
+    /// OnEdit runs when a click lands on a highlight.
+    let onEdit: (Annotation, CGPoint) -> Void
+
+    func makeCoordinator() -> ReaderCoordinator { ReaderCoordinator(model: model) }
+
+    func makeNSView(context: Context) -> EDRMetalView {
+        let view = EDRMetalView()
+        let coordinator = context.coordinator
+        view.onResize = { [weak view] in if let view { coordinator.scheduleLayout(view) } }
+        view.onKey = { coordinator.handle($0) }
+        view.onMouse = { [weak view] step, point, event in
+            if let view { coordinator.mouse(step, at: point, event: event, in: view) }
+        }
+        view.onScroll = { coordinator.scroll($0) }
+        view.onMenu = { coordinator.menu(at: $0) }
+        view.onCopy = { coordinator.model.copySelection() }
+        view.canCopy = { coordinator.tab?.selection != nil }
+        return view
+    }
+
+    func updateNSView(_ view: EDRMetalView, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.onEdit = onEdit
+        if coordinator.tab !== tab {
+            coordinator.tab = tab
+            coordinator.reset()
+            // Take the keys for the newly shown book; later updates leave
+            // focus where the user put it.
+            view.window?.makeFirstResponder(view)
+        }
+        coordinator.update(view)
+    }
+}
