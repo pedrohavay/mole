@@ -33,7 +33,8 @@ macOS of the machine that built it and change with every upgrade.
 - Every string or buffer the core returns belongs to the caller and is
   released with `mole_free`. The one exception is the coverage mask, which the
   session owns and reuses until its next render, layout or close.
-- On failure a function returns 0 or NULL and `mole_last_error` explains why.
+- On failure a function returns 0 or NULL and `mole_last_error` explains why;
+  `mole_last_error_kind` tells a book protected by DRM from other failures.
 - Library calls (`mole_library_*`, import included) may come from any
   thread, one at a time per handle; a session is used from one thread at a
   time. The last error belongs to the calling thread. The app uses its main
@@ -43,6 +44,44 @@ macOS of the machine that built it and change with every upgrade.
 `app/Sources/Mole/Bridge` wraps these conventions: `CoreCall` holds the error
 and memory rules, `Library` and `Session` are the handle classes, and a
 `Session` closes (saving the position) when it is released.
+
+## Book formats
+
+Package `bookfile` knows the formats. It tells a file's format from its
+content first (a ZIP archive, a Palm database of type `BOOKMOBI` or
+`TEXtREAd`, an XML document with a `FictionBook` root) and from its
+extension only when the content has no such mark, which is the case of
+EPUB files that MuPDF would reject anyway and of plain text. The library's
+copy keeps the extension, so MuPDF picks the same handler when the book is
+opened.
+
+MuPDF reads MOBI, PRC and FB2 itself, as one HTML document, which makes
+them books of a single chapter: anchors all have chapter 0, and a relayout
+measures every page up to the reader's place (about 0.3 s for a book of a
+thousand pages). Plain text goes through Go first: it is decoded as UTF-16
+when a byte order mark says so, as UTF-8 when it is valid UTF-8, and as
+Windows-1252 otherwise, then turned into HTML paragraphs (wrapped lines are
+joined, short lines such as verse keep their breaks, and lines like
+"CHAPTER IV" become headings for the table of contents) and opened from
+memory.
+
+Metadata comes from each format's own fields: the OPF package of an EPUB,
+the EXTH records of a MOBI (title, author and cover image), the
+`description` of an FB2 with its `binary` cover, and the `Title:` and
+`Author:` lines of a Project Gutenberg text. MuPDF's title fills a gap, and
+the file name is the last resort. A book without a cover gets its first
+page.
+
+MuPDF ignores the encryption field of a MOBI header and would show the
+encrypted text, so `bookfile` checks it on import and on open and fails
+with `ErrDRM`. The C API reports that kind of failure through
+`mole_last_error_kind`, and the app explains it in the user's language.
+
+MuPDF breaks a page before an element only below the top of the page, so a
+margin above the first element turns a leading page break into an empty
+first page. MOBI books often start with a page break and every FB2 section
+title asks for one, so `bookfile` adds a few styles for those two formats
+that take the margins away.
 
 ## Light: how the text glows
 

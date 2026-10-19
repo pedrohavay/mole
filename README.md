@@ -31,6 +31,9 @@ Mole is in early development and has no release builds yet.
 - EPUB layout and rendering by MuPDF, one or two pages side by side.
   Diagrams are inverted so their lines glow; photos and covers keep their
   tones, and pictures stay dim by default.
+- MOBI, PRC, FB2 and plain text books as well. Text files get paragraphs
+  and chapter headings, whether they are UTF-8 or Windows-1252, and a book
+  protected by DRM is refused with a message that says so.
 - A library with covers, shelves for books in progress, not started and
   finished, search by title or author, drag and drop, and tabs that reopen
   on the next launch.
@@ -64,8 +67,8 @@ notarized releases.
 
 ## Usage
 
-Add books with File > Add Books (⌘O), by dropping EPUB files on the library,
-or with Open With > Mole in Finder. Mole copies each book into its library,
+Add books with File > Add Books (⌘O), by dropping EPUB, MOBI, PRC, FB2 or
+TXT files on the library, or with Open With > Mole in Finder. Mole copies each book into its library,
 so moving or deleting the original file does not break anything. Double-click
 a cover to open the book.
 
@@ -202,13 +205,14 @@ halves, how the light is produced, and the findings behind those choices.
 ```
 core/                 Go: the library, layout and rendering
   cmd/molecore/       the C API the app links against (c-archive)
+  internal/bookfile/  book formats: detection, metadata, covers, opening
   internal/epub/      EPUB metadata and covers
   internal/importer/  adding books to the library
   internal/library/   the SQLite library: books, settings, annotations
   internal/mupdf/     cgo binding to MuPDF
   internal/reading/   page geometry, text anchors, search and rendering
   internal/session/   an open book and how its position is saved
-  internal/testbook/  EPUB fixtures for the tests
+  internal/testbook/  EPUB, MOBI, PRC and FB2 fixtures for the tests
 app/                  Swift: the macOS app (SwiftPM)
   Sources/MoleCore/   module map for the core's generated header
   Sources/Mole/
