@@ -397,12 +397,24 @@ static void fill_paper(fz_context *ctx, fz_device *dev, fz_matrix ctm, float alp
 #define MD_DARKEST 0.12f
 #define MD_LIGHTEST 0.92f
 
+// MD_MIN_LUMINANCE is the least relative luminance of a hue on a black
+// page. Darker ones, such as pure blue, are mixed with white up to it.
+#define MD_MIN_LUMINANCE 0.3f
+
+static float srgb_to_linear(float c) {
+    return c <= 0.04045f ? c / 12.92f : powf((c + 0.055f) / 1.055f, 2.4f);
+}
+
+static float linear_to_srgb(float c) {
+    return c <= 0.0031308f ? 12.92f * c : 1.055f * powf(c, 1 / 2.4f) - 0.055f;
+}
+
 // book_color converts the color of text or a line to the RGB it glows in on
 // a black page into rgb, and reports whether it is a hue to keep. Black,
 // white, grays and colors too dark or too light to tell are left to the
 // reader's tint. A dark color, chosen to stand out on white paper, has its
 // lightness mirrored so that it stands out on black as much, with its hue
-// and chroma kept.
+// and chroma kept; a hue that is still dim is mixed with white.
 static int book_color(fz_context *ctx, fz_colorspace *cs, const float *color, fz_color_params cp, float *rgb) {
     if (cs == NULL || color == NULL) {
         return 0;
@@ -418,6 +430,17 @@ static int book_color(fz_context *ctx, fz_colorspace *cs, const float *color, fz
         float shift = 1 - hi - lo;
         for (int i = 0; i < 3; i++) {
             rgb[i] += shift;
+        }
+    }
+    float linear[3];
+    for (int i = 0; i < 3; i++) {
+        linear[i] = srgb_to_linear(rgb[i]);
+    }
+    float luminance = 0.2126f * linear[0] + 0.7152f * linear[1] + 0.0722f * linear[2];
+    if (luminance < MD_MIN_LUMINANCE) {
+        float t = (MD_MIN_LUMINANCE - luminance) / (1 - luminance);
+        for (int i = 0; i < 3; i++) {
+            rgb[i] = linear_to_srgb(linear[i] + t * (1 - linear[i]));
         }
     }
     return 1;
