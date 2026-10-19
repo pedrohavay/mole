@@ -1,7 +1,8 @@
-// Molecore exposes the reader's core (library, import, layout and rendering of
-// pages into an EDR coverage mask, text selection, search, bookmarks and
-// highlights) as a C API, built as a static library for a native user
-// interface written in another language:
+// Molecore exposes the reader's core (library, collections, import of files
+// and watched folders, layout and rendering of pages into an EDR coverage
+// mask, text selection, search, bookmarks and highlights) as a C API, built
+// as a static library for a native user interface written in another
+// language:
 //
 //	go build -buildmode=c-archive -o libmolecore.a ./cmd/molecore
 //
@@ -195,6 +196,17 @@ type bookJSON struct {
 	Fraction     float64 `json:"fraction"`
 	OpenedAt     int64   `json:"openedAt"` // Unix seconds, 0 if never opened
 	AddedAt      int64   `json:"addedAt"`
+	Collections  []int64 `json:"collections"` // IDs of the collections that hold the book
+	Missing      bool    `json:"missing"`     // the original left a watched folder
+}
+
+func toBookJSON(b library.Book) bookJSON {
+	out := bookJSON{ID: b.ID, Path: b.Path, OriginalPath: b.OriginalPath, Title: b.Title, Author: b.Author,
+		Fraction: b.Position.Fraction, AddedAt: b.AddedAt.Unix(), Collections: ids(b.Collections), Missing: b.Missing}
+	if !b.OpenedAt.IsZero() {
+		out.OpenedAt = b.OpenedAt.Unix()
+	}
+	return out
 }
 
 //export mole_library_books
@@ -211,12 +223,7 @@ func mole_library_books(lib C.int64_t) *C.char {
 	}
 	out := make([]bookJSON, 0, len(books))
 	for _, b := range books {
-		item := bookJSON{ID: b.ID, Path: b.Path, OriginalPath: b.OriginalPath, Title: b.Title, Author: b.Author,
-			Fraction: b.Position.Fraction, AddedAt: b.AddedAt.Unix()}
-		if !b.OpenedAt.IsZero() {
-			item.OpenedAt = b.OpenedAt.Unix()
-		}
-		out = append(out, item)
+		out = append(out, toBookJSON(b))
 	}
 	return jsonString(out)
 }
@@ -245,8 +252,10 @@ func mole_library_cover(lib, bookID C.int64_t, length *C.int64_t) unsafe.Pointer
 
 // mole_library_import adds an EPUB and returns the book's ID, or 0. The
 // library keeps a copy of the file in a Books directory next to its
-// database; importing a file already imported returns the same book without
-// reading the file again. It may run on a background thread.
+// database. A file is known by its path, size and modification time:
+// importing it again returns the same book without reading it, and a
+// changed or renamed file updates its book rather than adding another. It
+// may run on a background thread.
 //
 //export mole_library_import
 func mole_library_import(lib C.int64_t, path *C.char) C.int64_t {
