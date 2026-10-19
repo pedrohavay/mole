@@ -66,6 +66,13 @@ SPARKLE_PUBLIC_KEY ?=
 SPARKLE_KEY_FILE ?=
 SPARKLE_BIN := $(CURDIR)/app/.build/artifacts/sparkle/Sparkle/bin
 
+# The disk image is laid out by dmgbuild, a Python tool that writes Finder's
+# window settings without running Finder, so it works in CI too. A release
+# installs it, pinned, in a virtual environment in build/.
+PYTHON ?= python3
+DMGBUILD_ENV := $(BUILD)/dmgbuild
+DMGBUILD := $(CURDIR)/$(DMGBUILD_ENV)/bin/dmgbuild
+
 .PHONY: all core app bundle run verify test test-core test-app lint notices release mupdf clean distclean help FORCE
 
 all: bundle
@@ -161,9 +168,13 @@ notices: $(MUPDF_PINNED)/lib/libmupdf.a
 RELEASE_ENV = SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARIZE="$(NOTARIZE)" NOTARY_PROFILE="$(NOTARY_PROFILE)" \
 	NOTARY_KEY="$(NOTARY_KEY)" NOTARY_KEY_ID="$(NOTARY_KEY_ID)" NOTARY_ISSUER="$(NOTARY_ISSUER)" \
 	SPARKLE_PUBLIC_KEY="$(SPARKLE_PUBLIC_KEY)" SPARKLE_KEY_FILE="$(SPARKLE_KEY_FILE)" \
-	SPARKLE_BIN="$(SPARKLE_BIN)" REPOSITORY_URL="$(REPOSITORY_URL)"
+	SPARKLE_BIN="$(SPARKLE_BIN)" REPOSITORY_URL="$(REPOSITORY_URL)" DMGBUILD="$(DMGBUILD)"
 
-release:
+$(DMGBUILD):
+	$(PYTHON) -m venv $(DMGBUILD_ENV)
+	$(DMGBUILD_ENV)/bin/pip install --quiet --disable-pip-version-check dmgbuild==1.6.7 ds-store==1.3.3 mac-alias==2.2.3
+
+release: $(DMGBUILD)
 	@$(RELEASE_ENV) scripts/release.sh --check
 	$(MAKE) bundle MUPDF_PREFIX=$(MUPDF_PINNED)
 	$(RELEASE_ENV) scripts/release.sh $(APP) $(RELEASE) $(VERSION)

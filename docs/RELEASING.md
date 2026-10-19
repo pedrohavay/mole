@@ -13,9 +13,16 @@ Pushing a version tag starts `.github/workflows/release.yml`. The workflow:
    and the hardened runtime.
 4. Starts the signed app once to check that it runs.
 5. Notarizes the app and staples the ticket.
-6. Signs the zip for Sparkle.
-7. Publishes a GitHub release with `Mole-<version>.zip`, its SHA-256 and
-   `appcast.xml`.
+6. Packs the app into `Mole.dmg`, with a link to Applications, then signs,
+   notarizes and staples the disk image too.
+7. Packs the app into `Mole-<version>.zip` and signs it for Sparkle.
+8. Publishes a GitHub release named after the tag, with `Mole.dmg`,
+   `Mole-<version>.zip`, their SHA-256 and `appcast.xml`.
+
+`Mole.dmg` is what people download. It keeps the same name in every
+release, so the README links the latest one directly:
+`https://github.com/pedrohavay/mole/releases/latest/download/Mole.dmg`.
+The zip is what Sparkle installs when an installed copy updates.
 
 The release notes link the tagged source code, as the AGPL asks. Installed
 copies read the appcast of the latest release to find new versions:
@@ -133,9 +140,13 @@ make release SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY
 out both Sparkle keys to build a release with the updater off.
 
 The script checks the credentials before it builds anything. It also checks
-that the zip's signature matches the public key inside the app. Upload the
-zip, its `.sha256` and `appcast.xml` to a GitHub release of the tag
-`v<version>`.
+that the zip's signature matches the public key inside the app. Upload
+`Mole.dmg`, the zip, their `.sha256` files and `appcast.xml` to a GitHub
+release of the tag `v<version>`.
+
+The first `make release` creates a Python virtual environment in
+`build/dmgbuild` and installs a pinned dmgbuild there. It needs Python 3
+and a network connection that one time.
 
 ## Dry runs and the updater in development
 

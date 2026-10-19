@@ -1,10 +1,12 @@
 #!/bin/sh
 # release.sh turns build/Mole.app into a release: it signs the app and the
 # Sparkle framework inside it with a Developer ID and the hardened runtime,
-# checks that the signed app starts, notarizes it, staples the ticket, and
-# packs OUT_DIR/Mole-VERSION.zip with its SHA-256. When the app checks for
-# updates, it also signs the zip for Sparkle and writes OUT_DIR/appcast.xml.
-# `make release` builds the app and calls it.
+# checks that the signed app starts, notarizes it and staples the ticket.
+# It then packs OUT_DIR/Mole.dmg, the disk image people download, and
+# OUT_DIR/Mole-VERSION.zip, the archive the updater installs, each with its
+# SHA-256; the disk image is signed and notarized too. When the app checks
+# for updates, it also signs the zip for Sparkle and writes
+# OUT_DIR/appcast.xml. `make release` builds the app and calls it.
 #
 # Usage: scripts/release.sh APP OUT_DIR VERSION
 #        scripts/release.sh --check     only check the environment below
@@ -26,6 +28,7 @@
 #                        exports it; or
 #   SPARKLE_KEY_FILE     a file holding that private key
 #   SPARKLE_BIN          the folder with Sparkle's sign_update
+#   DMGBUILD             the dmgbuild command, which lays out the disk image
 #   REPOSITORY_URL       the GitHub repository the release is published in
 set -eu
 
@@ -44,6 +47,7 @@ SPARKLE_PUBLIC_KEY=${SPARKLE_PUBLIC_KEY:-}
 SPARKLE_PRIVATE_KEY=${SPARKLE_PRIVATE_KEY:-}
 SPARKLE_KEY_FILE=${SPARKLE_KEY_FILE:-}
 SPARKLE_BIN=${SPARKLE_BIN:-}
+DMGBUILD=${DMGBUILD:-}
 REPOSITORY_URL=${REPOSITORY_URL:-https://github.com/pedrohavay/mole}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 
@@ -126,11 +130,13 @@ check_sparkle "$PUBLIC_KEY"
 if [ -n "$PUBLIC_KEY" ]; then
 	[ -x "$SPARKLE_BIN/sign_update" ] || fail "no sign_update in SPARKLE_BIN ($SPARKLE_BIN); make app downloads it"
 fi
+[ -x "$DMGBUILD" ] || fail "no dmgbuild at DMGBUILD ($DMGBUILD); make release installs it"
 
 mkdir -p "$OUT"
 ZIP="$OUT/Mole-$VERSION.zip"
+DMG="$OUT/Mole.dmg"
 APPCAST="$OUT/appcast.xml"
-rm -f "$ZIP" "$ZIP.sha256" "$APPCAST"
+rm -f "$ZIP" "$ZIP.sha256" "$DMG" "$DMG.sha256" "$APPCAST"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
@@ -191,25 +197,46 @@ notarytool() {
 	fi
 }
 
-if [ "$NOTARIZE" = yes ]; then
-	echo "release.sh: notarizing (this takes a few minutes)"
-	ditto -c -k --keepParent "$APP" "$WORK/Mole.zip"
-	RESULT=$(notarytool submit "$WORK/Mole.zip" --wait --output-format json) || true
+# notarize FILE submits FILE to Apple's notary service and waits for the
+# verdict; it fails, with Apple's log, unless FILE is accepted.
+notarize() {
+	RESULT=$(notarytool submit "$1" --wait --output-format json) || true
 	echo "$RESULT"
 	if ! echo "$RESULT" | grep -q '"status" *: *"Accepted"'; then
 		ID=$(echo "$RESULT" | sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p')
 		[ -z "$ID" ] || notarytool log "$ID" >&2 || true
-		fail "notarization failed; notarytool's output above, and its log when there is one, say why"
+		fail "notarization of $(basename "$1") failed; notarytool's output above, and its log when there is one, say why"
 	fi
+}
+
+if [ "$NOTARIZE" = yes ]; then
+	echo "release.sh: notarizing the app (this takes a few minutes)"
+	ditto -c -k --keepParent "$APP" "$WORK/Mole.zip"
+	notarize "$WORK/Mole.zip"
 	xcrun stapler staple "$APP"
 	xcrun stapler validate "$APP"
 	spctl --assess --type execute --verbose "$APP"
 fi
 
-# The zip and the appcast are made in WORK and reach OUT_DIR only once
-# every check has passed.
+# The disk image, the zip and the appcast are made in WORK and reach
+# OUT_DIR only once every check has passed.
 NAME=$(basename "$ZIP")
 ditto -c -k --keepParent "$APP" "$WORK/$NAME"
+
+# The disk image holds the stapled app and a link to Applications, in a
+# window that scripts/dmg-settings.py lays out. It is signed and notarized
+# on its own, so Gatekeeper trusts it before it is opened, and its ticket is
+# stapled for Macs that are offline.
+echo "release.sh: making the disk image"
+"$DMGBUILD" -s "$ROOT/scripts/dmg-settings.py" -D app="$APP" Mole "$WORK/Mole.dmg"
+codesign --force $TIMESTAMP --sign "$SIGN_IDENTITY" "$WORK/Mole.dmg"
+if [ "$NOTARIZE" = yes ]; then
+	echo "release.sh: notarizing the disk image"
+	notarize "$WORK/Mole.dmg"
+	xcrun stapler staple "$WORK/Mole.dmg"
+	xcrun stapler validate "$WORK/Mole.dmg"
+	spctl --assess --type open --context context:primary-signature --verbose "$WORK/Mole.dmg"
+fi
 
 # The appcast is what installed copies read to find this release. Its item
 # names the zip by its download address on the GitHub release of tag
@@ -250,5 +277,7 @@ else
 	echo "release.sh: the app has no SUPublicEDKey, so there is no appcast"
 fi
 mv "$WORK/$NAME" "$ZIP"
-(cd "$OUT" && shasum -a 256 "$NAME" > "$NAME.sha256")
+mv "$WORK/Mole.dmg" "$DMG"
+(cd "$OUT" && shasum -a 256 "$NAME" > "$NAME.sha256" && shasum -a 256 Mole.dmg > Mole.dmg.sha256)
+echo "$DMG"
 echo "$ZIP"

@@ -1,6 +1,7 @@
 # Release builds Mole from a version tag (v0.1.0), signs it with the
 # Developer ID certificate, notarizes it, and publishes it as a GitHub
-# release with its SHA-256 and the appcast that installed copies read to
+# release named after the tag: a disk image to download, a zip for the
+# updater, their SHA-256 and the appcast that installed copies read to
 # update themselves. The tag must match VERSION in the Makefile.
 # docs/RELEASING.md lists the secrets and the variable it needs.
 name: Release
@@ -115,19 +116,24 @@ jobs:
 
       # The notes link the exact source of the release, as the AGPL asks;
       # GitHub's notes for the changes since the last release follow them.
+      # The disk image keeps one name across releases, so the README can
+      # link the latest one directly.
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          DMG="build/release/Mole.dmg"
           ZIP="build/release/Mole-$VERSION.zip"
           SOURCE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_REF_NAME"
-          NOTES="Mole $VERSION for macOS 14 or later on Apple silicon. Download Mole-$VERSION.zip, open it, and move Mole to the Applications folder. Copies already installed offer this version through Mole > Check for Updates.
+          NOTES="Mole $VERSION for macOS 14 or later on Apple silicon. Download Mole.dmg, open it, and drag Mole to the Applications folder. Copies already installed offer this version through Mole > Check for Updates, which uses Mole-$VERSION.zip.
 
           Mole is free software under the GNU Affero General Public License, version 3 or later. This release is built from the tagged commit, whose source code is at $SOURCE and in the source code archives below.
 
+          SHA-256 of Mole.dmg: \`$(cut -d ' ' -f 1 "$DMG.sha256")\`
+
           SHA-256 of Mole-$VERSION.zip: \`$(cut -d ' ' -f 1 "$ZIP.sha256")\`"
-          gh release create "$GITHUB_REF_NAME" "$ZIP" "$ZIP.sha256" build/release/appcast.xml \
-            --verify-tag --latest --title "Mole $VERSION" --notes "$NOTES" --generate-notes
+          gh release create "$GITHUB_REF_NAME" "$DMG" "$DMG.sha256" "$ZIP" "$ZIP.sha256" build/release/appcast.xml \
+            --verify-tag --latest --title "$GITHUB_REF_NAME" --notes "$NOTES" --generate-notes
 
       - name: Delete the keychain and the keys
         if: always()
