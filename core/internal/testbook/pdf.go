@@ -31,8 +31,10 @@ type PDF struct {
 type PDFPage struct {
 	Width, Height float64 // in points; zero for US Letter, 612 x 792
 	// Lines are lines of text, in 12 point Helvetica from the top left
-	// corner, one inch in.
-	Lines []string
+	// corner, one inch in. Invisible text is not drawn but can be found,
+	// as the words a scanner's OCR lays over a scanned page.
+	Lines     []string
+	Invisible bool
 	// Image is drawn at ImageRect: x and y of its lower left corner, from
 	// the bottom left of the page, then its width and height, in points.
 	Image     image.Image
@@ -176,7 +178,11 @@ func (w *pdfWriter) page(num int, page PDFPage) {
 		fmt.Fprintf(&content, "q %g 0 0 %g %g %g cm /Im1 Do Q\n", r[2], r[3], r[0], r[1])
 	}
 	if len(page.Lines) > 0 {
-		fmt.Fprintf(&content, "BT /F1 12 Tf 14 TL 72 %g Td\n", height-72-12)
+		mode := 0
+		if page.Invisible {
+			mode = 3
+		}
+		fmt.Fprintf(&content, "BT /F1 12 Tf 14 TL %d Tr 72 %g Td\n", mode, height-72-12)
 		for _, line := range page.Lines {
 			fmt.Fprintf(&content, "(%s) Tj T*\n", escapePDF(line))
 		}
@@ -400,7 +406,10 @@ func SamplePDF() PDF {
 					"0.85 0.85 0.85 rg 72 300 468 24 re f 0 0 0 RG 1 w " +
 					"72 348 m 540 348 l S 72 324 m 540 324 l S 72 276 m 540 276 l S 72 252 m 540 252 l S",
 			},
-			{Image: sampleScan(), ImageRect: [4]float64{0, 0, 612, 792}},
+			{
+				Image: sampleScan(), ImageRect: [4]float64{0, 0, 612, 792},
+				Lines: []string{"", "", "Scanned words the OCR found under the picture."}, Invisible: true,
+			},
 		},
 		Outline: []PDFEntry{
 			{Title: "Cover", Page: 0},

@@ -285,14 +285,22 @@ func TestPDFScannedPage(t *testing.T) {
 		t.Errorf("scan at night: %d dark and %d light pixels; want dark paper with light words", dark, light)
 	}
 	r, err := s.VisibleRange()
-	if err != nil || r != (Range{Start: Anchor{Chapter: pdfScan}, End: Anchor{Chapter: pdfScan}}) {
-		t.Errorf("VisibleRange() = %+v, %v; want the empty start of page %d", r, err, pdfScan)
+	if err != nil || r.Start != (Anchor{Chapter: pdfScan}) || r.End != (Anchor{Chapter: pdfScan, Offset: 39}) {
+		t.Errorf("VisibleRange() = %+v, %v; want the 39 letters of the OCR text of page %d", r, err, pdfScan)
 	}
 	if loc := s.Location(); loc.Chapter != pdfScan || loc.Offset != 0 {
 		t.Errorf("Location() = %+v, want page %d", loc, pdfScan)
 	}
 	if p, ok, err := s.PictureAt(350, 450); err != nil || !ok || p.Page != pdfScan {
 		t.Errorf("PictureAt(middle) = %+v, %v, %v; want the scan", p, ok, err)
+	}
+	// Its invisible OCR text is not drawn, yet it can be found and selected.
+	res := search(t, s, "OCR found")
+	if len(res.Hits) != 1 || res.Hits[0].Range.Start.Chapter != pdfScan {
+		t.Fatalf("Search(OCR found) = %+v, want a hit on the scan", res.Hits)
+	}
+	if rects, err := s.RangeRects(res.Hits[0].Range); err != nil || len(rects) != 1 {
+		t.Errorf("RangeRects(OCR hit) = %+v, %v; want a box over the scan", rects, err)
 	}
 }
 
