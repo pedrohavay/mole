@@ -28,7 +28,7 @@ func TestNewGeometry(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := NewGeometry(tt.width, tt.height, tt.topInset, 2, tt.fontSize, tt.spread)
+			g := NewGeometry(tt.width, tt.height, tt.topInset, 2, tt.fontSize, tt.spread, MarginsNormal)
 			if g.Columns != tt.wantColumns {
 				t.Errorf("NewGeometry(%v x %v, font %v).Columns = %d, want %d", tt.width, tt.height, tt.fontSize, g.Columns, tt.wantColumns)
 			}
@@ -43,6 +43,32 @@ func TestNewGeometry(t *testing.T) {
 				t.Errorf("ColumnWidth = %v, want at most %v (32 em)", g.ColumnWidth, 32*tt.fontSize)
 			}
 		})
+	}
+}
+
+func TestMargins(t *testing.T) {
+	order := []Margins{MarginsNarrow, MarginsNormal, MarginsWide}
+	for _, width := range []float64{600, 1384} {
+		var prev Geometry
+		for i, m := range order {
+			g := NewGeometry(width, 874, 52, 2, 21, SpreadSingle, m)
+			if !g.usable() {
+				t.Fatalf("NewGeometry(%v wide, margins %d) = %+v, want a usable page", width, m, g)
+			}
+			if i > 0 && !(g.ColumnWidth < prev.ColumnWidth && g.Left > prev.Left && g.Top > prev.Top && g.PageHeight < prev.PageHeight) {
+				t.Errorf("at %v pt wide, margins %d give %+v and margins %d give %+v; want a smaller page with more room around it",
+					width, m, g, order[i-1], prev)
+			}
+			prev = g
+		}
+	}
+	// SpreadAuto asks for the same room for two pages whatever the margins:
+	// wide margins take it away sooner, narrow ones leave it longer.
+	if g := NewGeometry(1384, 874, 52, 2, 21, SpreadAuto, MarginsWide); g.Columns != 1 {
+		t.Errorf("wide margins on a 1384 pt view: %d columns, want 1", g.Columns)
+	}
+	if g := NewGeometry(1250, 874, 52, 2, 21, SpreadAuto, MarginsNarrow); g.Columns != 2 {
+		t.Errorf("narrow margins on a 1250 pt view: %d columns, want 2", g.Columns)
 	}
 }
 
@@ -67,7 +93,7 @@ func TestSpreads(t *testing.T) {
 		t.Fatalf("Open error: %v", err)
 	}
 	t.Cleanup(s.Close)
-	if err := s.Layout(NewGeometry(800, 600, 0, 1, 14, SpreadDouble), 14); err != nil {
+	if err := s.Layout(NewGeometry(800, 600, 0, 1, 14, SpreadDouble, MarginsNormal), 14); err != nil {
 		t.Fatalf("Layout error: %v", err)
 	}
 	if s.Geometry().Columns != 2 || s.Pages() < 10 {
@@ -110,8 +136,8 @@ func TestLayoutKeepsPlace(t *testing.T) {
 		t.Fatalf("Open error: %v", err)
 	}
 	t.Cleanup(s.Close)
-	narrow := NewGeometry(500, 600, 0, 1, 14, SpreadSingle)
-	wide := NewGeometry(1300, 700, 0, 1, 14, SpreadDouble)
+	narrow := NewGeometry(500, 600, 0, 1, 14, SpreadSingle, MarginsNormal)
+	wide := NewGeometry(1300, 700, 0, 1, 14, SpreadDouble, MarginsNormal)
 	if err := s.Layout(narrow, 14); err != nil {
 		t.Fatalf("Layout error: %v", err)
 	}
@@ -203,7 +229,7 @@ MMMMMMMMMM</pre>`,
 		t.Fatalf("Open error: %v", err)
 	}
 	t.Cleanup(s.Close)
-	if err := s.Layout(NewGeometry(500, 600, 0, 1, 14, SpreadSingle), 14); err != nil {
+	if err := s.Layout(NewGeometry(500, 600, 0, 1, 14, SpreadSingle, MarginsNormal), 14); err != nil {
 		t.Fatalf("Layout error: %v", err)
 	}
 	render := func(chapter int) (text, images []byte, drawn bool) {

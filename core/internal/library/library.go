@@ -55,6 +55,11 @@ type Settings struct {
 	Spread   int    // pages side by side: 0 automatic, 1 single, 2 double
 	Accent   string // interface accent as "#RRGGBB"; empty means the default
 	Images   int    // how bright the image layer is: 0 dim, 1 off, 2 full
+	// The style of the text (see reading.Style and reading.Margins).
+	Font        string // family of an offered font, or "" for the book's own fonts
+	LineSpacing int    // 0 normal, 1 compact, 2 relaxed
+	Margins     int    // 0 normal, 1 narrow, 2 wide
+	Justify     bool   // justified rather than left-aligned paragraphs
 }
 
 // DefaultSettings returns the settings used before the user changes any.
@@ -135,6 +140,10 @@ var migrations = []string{
 	UPDATE books SET original_path = path;
 	CREATE UNIQUE INDEX books_by_original_path ON books (original_path);`,
 	`ALTER TABLE reader_settings ADD COLUMN images INTEGER NOT NULL DEFAULT 0;`,
+	`ALTER TABLE reader_settings ADD COLUMN font TEXT NOT NULL DEFAULT '';
+	ALTER TABLE reader_settings ADD COLUMN line_spacing INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE reader_settings ADD COLUMN margins INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE reader_settings ADD COLUMN justify INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // Store is a library backed by a SQLite database. It is safe for concurrent use.
@@ -329,8 +338,10 @@ func (s *Store) SavePosition(id int64, p Position, openedAt time.Time) error {
 func (s *Store) Settings() (Settings, error) {
 	var st Settings
 	err := s.db.QueryRow(`
-		SELECT level, edr, tint, gamma, font_size, spread, accent, images FROM reader_settings WHERE id = 1`).
-		Scan(&st.Level, &st.EDR, &st.Tint, &st.Gamma, &st.FontSize, &st.Spread, &st.Accent, &st.Images)
+		SELECT level, edr, tint, gamma, font_size, spread, accent, images, font, line_spacing, margins, justify
+		FROM reader_settings WHERE id = 1`).
+		Scan(&st.Level, &st.EDR, &st.Tint, &st.Gamma, &st.FontSize, &st.Spread, &st.Accent, &st.Images,
+			&st.Font, &st.LineSpacing, &st.Margins, &st.Justify)
 	if errors.Is(err, sql.ErrNoRows) {
 		return DefaultSettings(), nil
 	}
@@ -343,12 +354,15 @@ func (s *Store) Settings() (Settings, error) {
 // SaveSettings replaces the reader settings.
 func (s *Store) SaveSettings(st Settings) error {
 	_, err := s.db.Exec(`
-		INSERT INTO reader_settings (id, level, edr, tint, gamma, font_size, spread, accent, images)
-		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO reader_settings (id, level, edr, tint, gamma, font_size, spread, accent, images,
+			font, line_spacing, margins, justify)
+		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET level = excluded.level, edr = excluded.edr, tint = excluded.tint,
 			gamma = excluded.gamma, font_size = excluded.font_size, spread = excluded.spread,
-			accent = excluded.accent, images = excluded.images`,
-		st.Level, st.EDR, st.Tint, st.Gamma, st.FontSize, st.Spread, st.Accent, st.Images)
+			accent = excluded.accent, images = excluded.images, font = excluded.font,
+			line_spacing = excluded.line_spacing, margins = excluded.margins, justify = excluded.justify`,
+		st.Level, st.EDR, st.Tint, st.Gamma, st.FontSize, st.Spread, st.Accent, st.Images,
+		st.Font, st.LineSpacing, st.Margins, st.Justify)
 	if err != nil {
 		return fmt.Errorf("save settings: %w", err)
 	}

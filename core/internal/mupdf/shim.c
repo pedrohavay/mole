@@ -1,6 +1,8 @@
 #include "shim.h"
+#include "systemfonts.h"
 
 #include <mupdf/fitz.h>
+#include <math.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -85,6 +87,7 @@ struct md_doc {
     fz_context *ctx;
     fz_document *doc;
     md_budget *budget;
+    md_font_files fonts;
     md_image_style styles[MD_IMAGE_STYLES];
     int next_style; // slot to reuse when all are taken
 };
@@ -126,8 +129,11 @@ static void set_err(fz_context *ctx, char *err, int errlen) {
 }
 
 md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err, int errlen) {
+    md_doc *d = calloc(1, sizeof *d);
     md_budget *budget = malloc(sizeof *budget);
-    if (budget == NULL) {
+    if (d == NULL || budget == NULL) {
+        free(budget);
+        free(d);
         snprintf(err, (size_t)errlen, "out of memory");
         return NULL;
     }
@@ -136,11 +142,13 @@ md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err,
     fz_context *ctx = fz_new_context(&alloc, &locks, MD_STORE_SIZE);
     if (ctx == NULL) {
         free(budget);
+        free(d);
         snprintf(err, (size_t)errlen, "cannot create MuPDF context");
         return NULL;
     }
     fz_set_warning_callback(ctx, quiet, NULL);
     fz_set_error_callback(ctx, quiet, NULL);
+    md_install_system_fonts(ctx, &d->fonts);
     fz_document *doc = NULL;
     fz_var(doc);
     fz_try(ctx) {
@@ -152,16 +160,10 @@ md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err,
     }
     fz_catch(ctx) {
         set_err(ctx, err, errlen);
+        md_drop_font_files(ctx, &d->fonts);
         fz_drop_context(ctx);
         free(budget);
-        return NULL;
-    }
-    md_doc *d = calloc(1, sizeof *d);
-    if (d == NULL) {
-        fz_drop_document(ctx, doc);
-        fz_drop_context(ctx);
-        free(budget);
-        snprintf(err, (size_t)errlen, "out of memory");
+        free(d);
         return NULL;
     }
     d->ctx = ctx;
@@ -184,6 +186,7 @@ void md_close(md_doc *d) {
         drop_style(d->ctx, &d->styles[i]);
     }
     fz_drop_document(d->ctx, d->doc);
+    md_drop_font_files(d->ctx, &d->fonts);
     fz_drop_context(d->ctx);
     free(d->budget);
     free(d);
@@ -814,7 +817,31 @@ int md_page_number(md_doc *d, int chapter, int index) {
     return page;
 }
 
-int md_page_chars(md_doc *d, int page_number, md_char **chars, char *err, int errlen) {
+// MD_MUPDF_PARAGRAPH_DIST is how far apart, in ems, MuPDF lets the baselines
+// of two lines of a text block be.
+#define MD_MUPDF_PARAGRAPH_DIST 1.5f
+
+// continues_block reports whether line, the first of a text block, goes on
+// the paragraph whose last line is prev, the last of the block before it, as
+// MuPDF would judge with a paragraph distance of line_dist ems instead of its
+// own: it is horizontal text of the same size, below prev, farther than
+// MuPDF allows but no farther than line_dist, and not indented from where
+// prev starts.
+static int continues_block(fz_stext_line *prev, fz_stext_line *line, float line_dist) {
+    if (line_dist <= MD_MUPDF_PARAGRAPH_DIST || prev == NULL || prev->first_char == NULL || line->first_char == NULL ||
+        prev->wmode || line->wmode) {
+        return 0;
+    }
+    fz_stext_char *a = prev->first_char, *b = line->first_char;
+    float size = a->size;
+    if (size <= 0 || fabsf(b->size - size) > 0.01f * size) {
+        return 0;
+    }
+    float down = b->origin.y - a->origin.y;
+    return down > MD_MUPDF_PARAGRAPH_DIST * size && down <= line_dist * size && b->origin.x <= a->origin.x + 0.5f;
+}
+
+int md_page_chars(md_doc *d, int page_number, float line_dist, md_char **chars, char *err, int errlen) {
     fz_context *ctx = d->ctx;
     fz_stext_page *text = NULL;
     int count = -1;
@@ -842,18 +869,22 @@ int md_page_chars(md_doc *d, int page_number, md_char **chars, char *err, int er
                 fz_throw(ctx, FZ_ERROR_GENERIC, "out of memory");
             }
         }
-        int i = 0, line = 0, block = 0;
+        int i = 0, line = 0, paragraph = -1;
+        fz_stext_line *prev = NULL;
         for (fz_stext_block *b = text->first_block; b != NULL; b = b->next) {
-            if (b->type != FZ_STEXT_BLOCK_TEXT) {
+            if (b->type != FZ_STEXT_BLOCK_TEXT || b->u.t.first_line == NULL) {
                 continue;
+            }
+            if (paragraph < 0 || !continues_block(prev, b->u.t.first_line, line_dist)) {
+                paragraph++;
             }
             for (fz_stext_line *l = b->u.t.first_line; l != NULL; l = l->next, line++) {
                 for (fz_stext_char *c = l->first_char; c != NULL; c = c->next) {
                     fz_rect r = fz_rect_from_quad(c->quad);
-                    (*chars)[i++] = (md_char){c->c, r.x0, r.y0, r.x1, r.y1, line, block};
+                    (*chars)[i++] = (md_char){c->c, r.x0, r.y0, r.x1, r.y1, line, paragraph};
                 }
+                prev = l;
             }
-            block++;
         }
         count = n;
     }

@@ -12,18 +12,6 @@ import (
 	"mole/core/internal/mupdf"
 )
 
-// userCSS keeps the book's own styles and only overrides what hurts on an
-// EDR page: colored text and lines (dark red turns dim once inverted to
-// light) and justification, because MuPDF does not hyphenate. Code keeps a
-// monospaced font so that listings stay aligned. Backgrounds are left out
-// when rendering instead (see mupdf.Document.RenderLayers): MuPDF lets inline
-// styles win over these rules.
-const userCSS = `
-body, body * { font-family: serif !important; color: black !important; }
-pre, pre *, code, kbd, samp, tt { font-family: monospace !important; }
-p, li { line-height: 1.45 !important; text-align: left !important; }
-`
-
 // Location is where the reader is in a book, independently of the layout:
 // the first character shown, or, for places saved before anchors existed, a
 // chapter and how far into it.
@@ -45,6 +33,7 @@ type Chapter struct {
 // that searches run on goroutines of their own.
 type Session struct {
 	path     string
+	style    Style
 	doc      *mupdf.Document
 	outline  []mupdf.OutlineItem
 	chapters []Chapter
@@ -75,15 +64,11 @@ type Session struct {
 	text   *bookText         // text for searching, extracted on first use
 }
 
-// Open opens the book at path; the first Layout shows the page at start.
+// Open opens the book at path in the zero Style; the first Layout shows the
+// page at start.
 func Open(path string, start Location) (*Session, error) {
-	doc, err := mupdf.Open(path, userCSS)
+	doc, outline, err := openDocument(path, Style{})
 	if err != nil {
-		return nil, err
-	}
-	outline, err := doc.Outline()
-	if err != nil {
-		doc.Close()
 		return nil, err
 	}
 	s := &Session{path: path, doc: doc, outline: outline, start: start}
@@ -103,6 +88,44 @@ func (s *Session) Close() {
 	s.doc.Close()
 }
 
+// openDocument opens the book at path with the user style sheet of style and
+// reads its table of contents.
+func openDocument(path string, style Style) (*mupdf.Document, []mupdf.OutlineItem, error) {
+	doc, err := style.open(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	outline, err := doc.Outline()
+	if err != nil {
+		doc.Close()
+		return nil, nil, err
+	}
+	return doc, outline, nil
+}
+
+// SetStyle sets the text in style. The book has no layout until the next
+// Layout, which lays it out again showing the same text, also when the
+// geometry and the font size stay the same.
+func (s *Session) SetStyle(style Style) error {
+	if style.css() == s.style.css() {
+		s.style = style
+		return nil
+	}
+	// MuPDF keeps the chapters it parsed with the old style sheet, so the
+	// book is opened again rather than given a new one.
+	doc, outline, err := openDocument(s.path, style)
+	if err != nil {
+		return err
+	}
+	s.doc.Close()
+	s.doc, s.outline, s.style = doc, outline, style
+	s.pages = 0
+	return nil
+}
+
+// Style returns the style the text is set in.
+func (s *Session) Style() Style { return s.style }
+
 // Layout reflows the book for geo and fontSize and shows the screen that
 // holds the reader's anchor, so that the same text stays in view. It does
 // nothing when neither changed.
@@ -110,9 +133,17 @@ func (s *Session) Layout(geo Geometry, fontSize float64) error {
 	if s.pages > 0 && geo == s.geo && fontSize == s.fontSize {
 		return nil
 	}
+	return s.layout(geo, fontSize)
+}
+
+// layout reflows the book for geo and fontSize; see Layout. A view too small
+// for a page leaves the layout as it was; any other failure leaves the book
+// without one.
+func (s *Session) layout(geo Geometry, fontSize float64) error {
 	if !geo.usable() {
 		return errors.New("reading: view too small for a page")
 	}
+	s.pages = 0
 	pages, err := s.doc.Layout(geo.ColumnWidth, geo.PageHeight, fontSize)
 	if err != nil {
 		return err

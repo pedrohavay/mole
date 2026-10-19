@@ -34,7 +34,7 @@ func TestSavesWhereTheReaderIs(t *testing.T) {
 			t.Fatalf("Open error: %v", err)
 		}
 		b.now = func() time.Time { return clock }
-		if err := b.Reading().Layout(reading.NewGeometry(500, 600, 0, 1, 14, reading.SpreadSingle), 14); err != nil {
+		if err := b.Reading().Layout(reading.NewGeometry(500, 600, 0, 1, 14, reading.SpreadSingle, reading.MarginsNormal), 14); err != nil {
 			t.Fatalf("Layout error: %v", err)
 		}
 		return b

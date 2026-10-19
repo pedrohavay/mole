@@ -46,8 +46,15 @@ func TestJSONShapes(t *testing.T) {
 		},
 		{
 			name: "Settings",
-			give: settingsJSON{Level: 0.5, EDR: true, Gamma: 2.2, FontSize: 21, Accent: "#112233", Images: 2},
-			want: `{"level":0.5,"edr":true,"tint":0,"gamma":2.2,"fontSize":21,"spread":0,"accent":"#112233","images":2}`,
+			give: settingsJSON{Level: 0.5, EDR: true, Gamma: 2.2, FontSize: 21, Accent: "#112233", Images: 2,
+				Font: "Georgia", LineSpacing: 2, Margins: 1, Justify: true},
+			want: `{"level":0.5,"edr":true,"tint":0,"gamma":2.2,"fontSize":21,"spread":0,"accent":"#112233","images":2,` +
+				`"font":"Georgia","lineSpacing":2,"margins":1,"justify":true}`,
+		},
+		{
+			name: "Style",
+			give: styleJSON{Font: "Charter", LineSpacing: 1, Margins: 2},
+			want: `{"font":"Charter","lineSpacing":1,"margins":2,"justify":false}`,
 		},
 		{
 			name: "Rect",

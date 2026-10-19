@@ -5,13 +5,17 @@
 // Every Document has its own MuPDF context, so different documents may be
 // used on different goroutines at the same time.
 //
+// Documents find the fonts installed on the Mac that their styles name, which
+// MuPDF alone does not (see FindFont).
+//
 // It links the static MuPDF libraries. Where they are comes from CGO_CFLAGS
 // (-I) and CGO_LDFLAGS (-L), which the Makefile sets from MUPDF_PREFIX; run
-// Go commands through make, or set those two variables yourself.
+// Go commands through make, or set those two variables yourself. A program
+// that links the package as a C archive must also link CoreText.
 package mupdf
 
 /*
-#cgo LDFLAGS: -lmupdf -lmupdf-third -lm
+#cgo LDFLAGS: -lmupdf -lmupdf-third -lm -framework CoreText -framework CoreFoundation
 #include <stdlib.h>
 #include "shim.h"
 */
@@ -29,7 +33,8 @@ const errLen = 512
 // Document is an open MuPDF document. It is not safe for concurrent use, but
 // separate documents, even of the same file, are independent.
 type Document struct {
-	d *C.md_doc
+	d        *C.md_doc
+	lineDist float64 // see SetLineDistance
 }
 
 // memoryLimit is what one document may allocate, so that a decompression
@@ -230,14 +235,22 @@ type Char struct {
 	Rune  rune
 	Box   Rect
 	Line  int // index of the line on the page, counting from 0
-	Block int // index of the text block on the page, counting from 0
+	Block int // index of the paragraph on the page, counting from 0 (see SetLineDistance)
+}
+
+// SetLineDistance tells PageChars how far apart, in ems, the baselines of two
+// lines of one paragraph may be. MuPDF starts a new paragraph past 1.5 em,
+// which a generous line height passes; a larger distance keeps such lines
+// together. Smaller values, the zero value included, keep MuPDF's.
+func (doc *Document) SetLineDistance(ems float64) {
+	doc.lineDist = ems
 }
 
 // PageChars returns the text of page in reading order.
 func (doc *Document) PageChars(page int) ([]Char, error) {
 	msg := make([]byte, errLen)
 	var chars *C.md_char
-	n := C.md_page_chars(doc.d, C.int(page), &chars, cbuf(msg), errLen)
+	n := C.md_page_chars(doc.d, C.int(page), C.float(doc.lineDist), &chars, cbuf(msg), errLen)
 	if n < 0 {
 		return nil, fmt.Errorf("text of page %d: %s", page, cstr(msg))
 	}
@@ -252,6 +265,34 @@ func (doc *Document) PageChars(page int) ([]Char, error) {
 		}
 	}
 	return out, nil
+}
+
+// FontStyle is a face of a font family: bold or not, italic or not.
+type FontStyle struct {
+	Bold, Italic bool
+}
+
+// FindFont returns the file that holds the face of an installed font family
+// closest to style, as CoreText matches it, and the index of that face in the
+// file: 0 unless the file is a collection (.ttc). It reports false when no
+// family of that name is installed, and always for the CSS generic families
+// (serif, sans-serif, monospace, ...), which MuPDF has fonts of its own for.
+func FindFont(family string, style FontStyle) (path string, index int, ok bool) {
+	cfamily := C.CString(family)
+	defer C.free(unsafe.Pointer(cfamily))
+	buf := make([]byte, 1024)
+	var cindex C.int
+	if C.md_find_font(cfamily, cbool(style.Bold), cbool(style.Italic), cbuf(buf), C.int(len(buf)), &cindex) != 0 {
+		return "", 0, false
+	}
+	return cstr(buf), int(cindex), true
+}
+
+func cbool(b bool) C.int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func cbuf(b []byte) *C.char {

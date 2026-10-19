@@ -72,7 +72,7 @@ func (s *Session) Search(query string) (*Search, error) {
 		return nil, errors.New("reading: nothing to search for")
 	}
 	if s.text == nil {
-		s.text = startBookText(s.path)
+		s.text = startBookText(s.path, s.style)
 	}
 	sr := &Search{query: folded, stop: make(chan struct{}), exited: make(chan struct{})}
 	go sr.run(s.text)
@@ -265,9 +265,12 @@ type bookText struct {
 	err      error
 }
 
-func startBookText(path string) *bookText {
+// startBookText starts extracting the text of the book at path set in
+// style. Anchors do not depend on the style, so the text stays valid when
+// the reader's style changes.
+func startBookText(path string, style Style) *bookText {
 	b := &bookText{stop: make(chan struct{}), exited: make(chan struct{}), changed: make(chan struct{})}
-	go b.run(path)
+	go b.run(path, style)
 	return b
 }
 
@@ -276,17 +279,17 @@ func (b *bookText) close() {
 	b.once.Do(func() { close(b.stop) })
 }
 
-func (b *bookText) run(path string) {
+func (b *bookText) run(path string, style Style) {
 	defer close(b.exited)
-	err := b.extract(path)
+	err := b.extract(path, style)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.done, b.err = true, err
 	close(b.changed)
 }
 
-func (b *bookText) extract(path string) error {
-	doc, err := mupdf.Open(path, userCSS)
+func (b *bookText) extract(path string, style Style) error {
+	doc, err := style.open(path)
 	if err != nil {
 		return err
 	}

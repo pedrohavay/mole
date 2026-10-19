@@ -287,6 +287,11 @@ type settingsJSON struct {
 	Spread   int     `json:"spread"`
 	Accent   string  `json:"accent"`
 	Images   int     `json:"images"` // image layer: 0 dim, 1 off, 2 full
+	// The style of the text, as in styleJSON.
+	Font        string `json:"font"`
+	LineSpacing int    `json:"lineSpacing"`
+	Margins     int    `json:"margins"`
+	Justify     bool   `json:"justify"`
 }
 
 //export mole_library_settings
@@ -485,25 +490,55 @@ func mole_session_close(s C.int64_t) {
 	sessions.remove(int64(s))
 }
 
+// styleJSON is how the text is set, the style argument of
+// mole_session_layout.
+type styleJSON struct {
+	Font        string `json:"font"`        // a family of mole_fonts, or "" for the book's own fonts
+	LineSpacing int    `json:"lineSpacing"` // 0 normal, 1 compact, 2 relaxed
+	Margins     int    `json:"margins"`     // 0 normal, 1 narrow, 2 wide
+	Justify     bool   `json:"justify"`     // justified rather than left-aligned paragraphs
+}
+
 // mole_session_layout reflows the book for a view of width x height points
 // with topInset points covered by the toolbar, scale pixels per point, a base
-// font size and spread pages side by side (0 automatic, 1 single, 2 double),
-// keeping the reader at the same place.
+// font size, spread pages side by side (0 automatic, 1 single, 2 double) and
+// the text set in style, a JSON object of the form
+// {"font":string,"lineSpacing":int,"margins":int,"justify":bool}, keeping the
+// reader at the same place.
 //
 //export mole_session_layout
-func mole_session_layout(s C.int64_t, width, height, topInset, scale, fontSize C.double, spread C.int) C.int {
+func mole_session_layout(s C.int64_t, width, height, topInset, scale, fontSize C.double, spread C.int,
+	style *C.char) C.int {
 	ss, ok := sessions.get(int64(s))
 	if !ok {
 		fail(errBadHandle)
 		return 0
 	}
+	var st styleJSON
+	if !parseJSON(style, "style", &st) {
+		return 0
+	}
 	geo := reading.NewGeometry(float64(width), float64(height), float64(topInset), float64(scale), float64(fontSize),
-		reading.Spread(spread))
-	if err := ss.book.Reading().Layout(geo, float64(fontSize)); err != nil {
+		reading.Spread(spread), reading.Margins(st.Margins))
+	read := ss.book.Reading()
+	if err := read.SetStyle(reading.Style{Font: st.Font, LineSpacing: reading.LineSpacing(st.LineSpacing), Justify: st.Justify}); err != nil {
+		fail(err)
+		return 0
+	}
+	if err := read.Layout(geo, float64(fontSize)); err != nil {
 		fail(err)
 		return 0
 	}
 	return 1
+}
+
+// mole_fonts returns the families of the installed fonts the reader offers
+// for the font of a style, as a JSON array of strings in the order to show
+// them.
+//
+//export mole_fonts
+func mole_fonts() *C.char {
+	return jsonString(append([]string{}, reading.Fonts()...))
 }
 
 // moved returns 1 if the page changed. A failure to save the new place is

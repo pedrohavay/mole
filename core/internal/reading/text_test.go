@@ -34,7 +34,7 @@ func openSession(t *testing.T, path string, width, fontSize float64) *Session {
 
 func layout(t *testing.T, s *Session, width, fontSize float64) {
 	t.Helper()
-	if err := s.Layout(NewGeometry(width, 700, 0, 2, fontSize, SpreadSingle), fontSize); err != nil {
+	if err := s.Layout(NewGeometry(width, 700, 0, 2, fontSize, SpreadSingle, MarginsNormal), fontSize); err != nil {
 		t.Fatalf("Layout(%v, %v) error: %v", width, fontSize, err)
 	}
 }
@@ -283,7 +283,7 @@ func TestAnchorsInBook(t *testing.T) {
 		t.Fatalf("Open error: %v", err)
 	}
 	t.Cleanup(s.Close)
-	if err := s.Layout(NewGeometry(1384, 874, 52, 2, 16, SpreadAuto), 16); err != nil {
+	if err := s.Layout(NewGeometry(1384, 874, 52, 2, 16, SpreadAuto, MarginsNormal), 16); err != nil {
 		t.Fatalf("Layout error: %v", err)
 	}
 	if _, err := s.GoTo(s.Pages() / 2); err != nil {
@@ -325,7 +325,7 @@ func TestAnchorsInBook(t *testing.T) {
 
 	// A larger font and a narrower window put the word on another page;
 	// its anchor still finds it.
-	if err := s.Layout(NewGeometry(900, 700, 52, 2, 26, SpreadAuto), 26); err != nil {
+	if err := s.Layout(NewGeometry(900, 700, 52, 2, 26, SpreadAuto, MarginsNormal), 26); err != nil {
 		t.Fatalf("Layout at 26pt error: %v", err)
 	}
 	start = time.Now()
@@ -347,7 +347,7 @@ func TestAnchorsInBook(t *testing.T) {
 	}
 
 	// Every chapter counts the same characters in any layout.
-	doc, err := mupdf.Open(path, userCSS)
+	doc, err := mupdf.Open(path, Style{}.css())
 	if err != nil {
 		t.Fatalf("mupdf.Open error: %v", err)
 	}
