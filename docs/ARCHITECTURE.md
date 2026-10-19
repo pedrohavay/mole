@@ -2,14 +2,15 @@
 
 Mole is two programs linked into one binary. The Go core owns the data and
 the book: the SQLite library, EPUB import, layout with MuPDF and the
-rasterization of pages into a coverage mask. The Swift app owns everything
-the user sees: the window, the library grid, the tabs and the Metal view that
-turns the mask into light. They meet at a small C API.
+rasterization of pages into a coverage mask and color layers. The Swift app
+owns everything the user sees: the window, the library grid, the tabs and the
+Metal view that turns the layers into light. They meet at a small C API.
 
 ```
 SwiftUI views ── AppModel ── Bridge (Library, Session) ── C API ── Go core ── MuPDF
                                                                      └─────── SQLite
-EDRRenderer (Metal) ◀── coverage mask (one byte per pixel) ◀──────────┘
+EDRRenderer (Metal) ◀── coverage mask (one byte per pixel) ◀──────────┤
+                    ◀── text colors and pictures (RGBA) ◀─────────────┘
 ```
 
 ## The C API
@@ -31,8 +32,9 @@ macOS of the machine that built it and change with every upgrade.
 - Structured results are JSON strings. Swift decodes them into `Codable`
   types (`Book`, `ReaderSettings`, `SessionState`, `Chapter`).
 - Every string or buffer the core returns belongs to the caller and is
-  released with `mole_free`. The one exception is the coverage mask, which the
-  session owns and reuses until its next render, layout or close.
+  released with `mole_free`. The exception is the layers a session renders
+  (the coverage mask, the text colors and the pictures), which the session
+  owns and reuses until its next render, layout or close.
 - On failure a function returns 0 or NULL and `mole_last_error` explains why.
 - Library calls (`mole_library_*`, import included) may come from any
   thread, one at a time per handle; a session is used from one thread at a
@@ -110,6 +112,50 @@ Facts that shaped this design, found while prototyping:
   page black until the headroom settles (`WarmUp`), so text never fades in.
 - **macOS posts no headroom notification**, so `AppModel` samples it ten
   times a second.
+
+## Colors and pictures
+
+The core splits each page among three layers (`md_render_layers` in
+`core/internal/mupdf/shim.c`). Text always goes to the coverage mask in full
+ink, whatever its color, so that gray captions and white text on a dark box
+still glow. When the reader keeps the book's colors, text and lines drawn in
+a hue also go to an RGBA layer with their coverage as alpha. Black, white and
+grays are left out and keep the tint. A dark hue, chosen to stand out on
+white paper, has its lightness mirrored so that it stands out on black, and
+a hue still dimmer than a set luminance (pure blue, for example) is mixed
+with white. The shader takes the hue in place of the tint in proportion to
+that alpha, so a colored heading keeps the stroke weight and the EDR gain of
+the rest of the text.
+
+Pictures go to the third layer, RGBA on black with premultiplied alpha, in
+one of three styles that `mole_session_set_style` picks:
+
+- Night draws photographs as they are and inverts line art, so that a
+  diagram's lines glow instead of its paper. An image counts as line art
+  when, composited on white, it is light on average and at least a third of
+  it is bare paper; a bright photograph has little pure white. The inversion
+  keeps hue and chroma (each channel moves by alpha minus the largest minus
+  the smallest), so a red box stays red.
+- Original colors draws every image on a white rectangle, as on a printed
+  page, so a transparent drawing does not vanish into the black.
+- Hidden draws no picture.
+
+MuPDF draws an image that scales, an SVG drawing, at its own size at 96 dpi
+and scales the pixels, which blurs it on a Retina screen. The core draws
+such an image itself at its size in pixels on the page and keeps that copy
+until the size changes, so a diagram in SVG is as sharp as the text.
+
+The shader converts both color layers from sRGB to linear Display P3 and
+draws pictures under the text at `min(gain, 1)`, so they follow the
+brightness level but never go past SDR white. MuPDF lets inline styles win
+over the reader's style sheet, which is why colors are decided while
+rendering rather than in CSS.
+
+Clicking a picture asks the core what is under the pointer
+(`mole_session_image_at`, which lists the images of the visible pages once
+per layout) and for its pixels as on white paper, at its own resolution
+(`mole_session_image_pixels`). `PictureViewer` shows them in an SDR
+`NSScrollView` over the page, which handles the pinch and the keys.
 
 ## Marks under the text
 

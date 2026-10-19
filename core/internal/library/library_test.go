@@ -104,7 +104,7 @@ func TestSettings(t *testing.T) {
 	if got != DefaultSettings() {
 		t.Errorf("Settings before saving = %+v, want defaults %+v", got, DefaultSettings())
 	}
-	want := Settings{Level: 0.31, EDR: false, Tint: 2, Gamma: 1.5, FontSize: 24, Spread: 2, Accent: "#3D7BFF", Images: 1}
+	want := Settings{Level: 0.31, EDR: false, Tint: 2, Gamma: 1.5, FontSize: 24, Spread: 2, Accent: "#3D7BFF", Pictures: 1, BookColors: true}
 	for range 2 { // the second save updates the existing row
 		if err := s.SaveSettings(want); err != nil {
 			t.Fatalf("SaveSettings error: %v", err)
@@ -293,6 +293,53 @@ func TestMigrateKeepsData(t *testing.T) {
 	var version int
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != len(migrations) {
 		t.Errorf("user_version after migrating = %d, %v; want %d", version, err, len(migrations))
+	}
+}
+
+// TestMigratePictures upgrades the brightness of pictures (images: 0 dim,
+// 1 off, 2 bright) to how they are shown (pictures: 0 night, 2 hidden).
+func TestMigratePictures(t *testing.T) {
+	tests := []struct {
+		name         string
+		images       int
+		wantPictures int
+	}{
+		{name: "Dim", images: 0, wantPictures: 0},
+		{name: "Off", images: 1, wantPictures: 2},
+		{name: "Bright", images: 2, wantPictures: 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "library.db")
+			db, err := sql.Open("sqlite", "file:"+path)
+			if err != nil {
+				t.Fatalf("sql.Open error: %v", err)
+			}
+			for _, m := range migrations[:5] {
+				if _, err := db.Exec(m); err != nil {
+					t.Fatalf("old migration error: %v", err)
+				}
+			}
+			_, err = db.Exec(`
+				PRAGMA user_version = 5;
+				INSERT INTO reader_settings (id, level, edr, tint, gamma, font_size, spread, accent, images)
+				VALUES (1, 0.5, 1, 0, 2.2, 21, 0, '', ?);`, tt.images)
+			if err != nil {
+				t.Fatalf("seed old database error: %v", err)
+			}
+			db.Close()
+
+			s, err := Open(path)
+			if err != nil {
+				t.Fatalf("Open of an old database error: %v", err)
+			}
+			t.Cleanup(func() { s.Close() })
+			got, err := s.Settings()
+			if err != nil || got.Pictures != tt.wantPictures || got.BookColors {
+				t.Errorf("Settings after migrating images %d = %+v, %v; want pictures %d without book colors",
+					tt.images, got, err, tt.wantPictures)
+			}
+		})
 	}
 }
 

@@ -66,6 +66,8 @@ func (b Book) WriteTo(t testing.TB, file string) string {
 			media = "image/png"
 		case ".jpg", ".jpeg":
 			media = "image/jpeg"
+		case ".svg":
+			media = "image/svg+xml"
 		}
 		fmt.Fprintf(&manifest, `<item id="f%d" href="%s" media-type="%s"/>`, i, name, media)
 		add("OEBPS/"+name, content)

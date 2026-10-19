@@ -19,10 +19,13 @@ struct Chapter: Decodable, Hashable {
     let page: Int
 }
 
-/// CoverageMask is one byte of ink coverage per pixel. The session owns the
+/// PixelLayer is a layer of the visible pages that the session renders: the
+/// text mask, one byte of ink coverage per pixel, or a layer of four bytes
+/// per pixel, RGBA in sRGB with premultiplied alpha. The session owns the
 /// bytes, which stay valid until its next render, layout or close.
-struct CoverageMask {
+struct PixelLayer {
     let bytes: UnsafeRawPointer
+    /// Stride is the length of a row in bytes.
     let stride: Int
     let width: Int
     let height: Int
@@ -91,25 +94,46 @@ final class Session {
         return try CoreCall.decode([Chapter].self, mole_session_chapters(handle))
     }
 
-    /// Returns the image layer of the last render, or nil when no picture is
-    /// on screen. Like the text mask, the session owns the bytes.
-    func imageMask() throws -> CoverageMask? {
+    /// Sets how the next renders draw the pages; it reports whether that
+    /// changed, which calls for a new render.
+    func setStyle(pictures: PictureMode, bookColors: Bool) throws -> Bool {
         try checkOpen()
-        var stride: Int64 = 0, width: Int64 = 0, height: Int64 = 0
-        var empty: Int32 = 0
-        guard let bytes = mole_session_image_mask(handle, &stride, &width, &height, &empty) else {
-            throw CoreCall.lastError()
-        }
-        guard empty == 0 else { return nil }
-        return CoverageMask(bytes: UnsafeRawPointer(bytes), stride: Int(stride), width: Int(width), height: Int(height))
+        let changed = mole_session_set_style(handle, Int32(pictures.rawValue), bookColors ? 1 : 0)
+        guard changed >= 0 else { throw CoreCall.lastError() }
+        return changed == 1
     }
 
     /// Renders the visible pages into the session's coverage mask.
-    func render() throws -> CoverageMask {
+    func render() throws -> PixelLayer {
         try checkOpen()
         var stride: Int64 = 0, width: Int64 = 0, height: Int64 = 0
         guard let bytes = mole_session_render(handle, &stride, &width, &height) else { throw CoreCall.lastError() }
-        return CoverageMask(bytes: UnsafeRawPointer(bytes), stride: Int(stride), width: Int(width), height: Int(height))
+        return PixelLayer(bytes: UnsafeRawPointer(bytes), stride: Int(stride), width: Int(width), height: Int(height))
+    }
+
+    /// Returns the pictures of the last render, RGBA on black, or nil when
+    /// none is on screen.
+    func imageLayer() throws -> PixelLayer? {
+        try layer(mole_session_image_layer)
+    }
+
+    /// Returns the hues of the colored text of the last render, RGBA with
+    /// the coverage of that text as alpha, or nil when there is none or the
+    /// style does not keep the book's colors.
+    func textColors() throws -> PixelLayer? {
+        try layer(mole_session_text_colors)
+    }
+
+    private typealias LayerCall = (Int64, UnsafeMutablePointer<Int64>?, UnsafeMutablePointer<Int64>?,
+                                   UnsafeMutablePointer<Int64>?, UnsafeMutablePointer<Int32>?) -> UnsafeMutableRawPointer?
+
+    private func layer(_ call: LayerCall) throws -> PixelLayer? {
+        try checkOpen()
+        var stride: Int64 = 0, width: Int64 = 0, height: Int64 = 0
+        var empty: Int32 = 0
+        guard let bytes = call(handle, &stride, &width, &height, &empty) else { throw CoreCall.lastError() }
+        guard empty == 0 else { return nil }
+        return PixelLayer(bytes: UnsafeRawPointer(bytes), stride: Int(stride), width: Int(width), height: Int(height))
     }
 
     /// SwiftUI can still hold a closed session's tab for a moment after it
