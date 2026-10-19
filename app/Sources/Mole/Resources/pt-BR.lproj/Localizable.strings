@@ -52,9 +52,9 @@
 "panel.search" = "Busca";
 "place.page" = "Página %ld";
 
-/* EDR state */
-"edr.active" = "EDR ativo";
-"edr.idle" = "EDR em espera";
+/* HDR state */
+"edr.active" = "HDR ativo";
+"edr.idle" = "HDR em espera";
 
 /* Errors */
 "error.book.drm" = "Este livro é protegido por DRM.";
@@ -148,9 +148,9 @@
 /* Light */
 "light.title" = "Brilho das Letras";
 "light.level" = "Brilho";
-"light.readout" = "Letras a %@× o branco SDR";
-"light.headroom" = "Margem EDR %@× de %@×";
-"light.edr" = "Alcance estendido (EDR)";
+"light.readout" = "Letras a %@× o branco normal";
+"light.headroom" = "Margem HDR %@× de %@×";
+"light.edr" = "Texto em HDR";
 "light.tint" = "Cor das letras";
 "tint.white" = "Branco";
 "tint.warm" = "Quente";
@@ -185,7 +185,7 @@
 "pictures.original" = "Cores Originais";
 "pictures.night" = "Noturnas";
 "pictures.hidden" = "Ocultas";
-"pictures.note" = "No modo noturno, as fotos mantêm as cores e os diagramas são invertidos, para que as linhas brilhem e o papel fique escuro. Num PDF, desenhos como tabelas e diagramas também contam como imagens. As imagens nunca passam do branco SDR. Clique em uma imagem para vê-la em tamanho real.";
+"pictures.note" = "No modo noturno, as fotos mantêm as cores e os diagramas são invertidos, para que as linhas brilhem e o papel fique escuro. Num PDF, desenhos como tabelas e diagramas também contam como imagens. As imagens nunca passam do branco normal. Clique em uma imagem para vê-la em tamanho real.";
 "picture.title" = "Imagem";
 "picture.zoomIn" = "Ampliar";
 "picture.zoomOut" = "Reduzir";
@@ -338,7 +338,7 @@
 "settings.text.note" = "A opção Fontes do Livro mantém as fontes que vêm com o livro. O código continua numa fonte monoespaçada, qualquer que seja a fonte. O Mole não separa as palavras em sílabas, então linhas justificadas podem deixar espaços largos entre elas.";
 "settings.text.fixedNote" = "Livros de páginas fixas, como os PDFs, mantêm as próprias fontes, espaçamentos e margens, e as teclas de tamanho da letra ampliam ou reduzem as páginas.";
 "settings.light" = "Luz";
-"settings.light.note" = "O brilho é uma fração do que a tela consegue mostrar acima do branco SDR neste momento. Sem EDR, as letras param no branco SDR.";
+"settings.light.note" = "O brilho é uma fração do quanto a tela consegue passar do branco normal neste momento. Sem HDR, as letras param no branco normal.";
 "settings.readAloud" = "Leitura em voz alta";
 "settings.shortcuts.reading" = "Durante a leitura";
 "settings.shortcuts.window" = "Janela e abas";
@@ -349,7 +349,7 @@
 "shortcut.startEnd" = "Início ou fim do livro";
 "shortcut.light" = "Mais ou menos brilho";
 "shortcut.textSize" = "Letra maior ou menor, ou zoom num PDF";
-"shortcut.edr" = "Ligar ou desligar o EDR";
+"shortcut.edr" = "Ligar ou desligar o HDR";
 "shortcut.tint" = "Próxima cor das letras";
 "shortcut.contents" = "Mostrar ou ocultar o sumário";
 "shortcut.fullScreen" = "Tela cheia";

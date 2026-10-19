@@ -52,9 +52,9 @@
 "panel.search" = "Search";
 "place.page" = "Page %ld";
 
-/* EDR state */
-"edr.active" = "EDR on";
-"edr.idle" = "EDR standing by";
+/* HDR state */
+"edr.active" = "HDR on";
+"edr.idle" = "HDR standing by";
 
 /* Errors */
 "error.book.drm" = "This book is protected by DRM.";
@@ -148,9 +148,9 @@
 /* Light */
 "light.title" = "Text Brightness";
 "light.level" = "Brightness";
-"light.readout" = "Text at %@× SDR white";
-"light.headroom" = "EDR headroom %@× of %@×";
-"light.edr" = "Extended range (EDR)";
+"light.readout" = "Text at %@× normal white";
+"light.headroom" = "HDR headroom %@× of %@×";
+"light.edr" = "HDR text";
 "light.tint" = "Text color";
 "tint.white" = "White";
 "tint.warm" = "Warm";
@@ -185,7 +185,7 @@
 "pictures.original" = "Original Colors";
 "pictures.night" = "Night";
 "pictures.hidden" = "Hidden";
-"pictures.note" = "Night keeps photographs in their colors and inverts diagrams, so their lines glow and their paper stays dark. In a PDF, drawings such as tables and diagrams count as pictures too. Pictures never go brighter than SDR white. Click a picture to see it full size.";
+"pictures.note" = "Night keeps photographs in their colors and inverts diagrams, so their lines glow and their paper stays dark. In a PDF, drawings such as tables and diagrams count as pictures too. Pictures never go brighter than normal white. Click a picture to see it full size.";
 "picture.title" = "Picture";
 "picture.zoomIn" = "Zoom In";
 "picture.zoomOut" = "Zoom Out";
@@ -338,7 +338,7 @@
 "settings.text.note" = "Book's Fonts keeps the fonts that come with the book. Code stays in a monospaced font whatever the font. Mole does not hyphenate words, so justified lines can leave wide gaps between them.";
 "settings.text.fixedNote" = "Books of fixed pages, such as PDFs, keep their own fonts, spacing and margins, and the text size keys zoom them instead.";
 "settings.light" = "Light";
-"settings.light.note" = "Brightness is a share of what the screen can show above SDR white right now. Without EDR the text stops at SDR white.";
+"settings.light.note" = "Brightness is a share of how far above normal white the screen can go right now. Without HDR, the text stops at normal white.";
 "settings.readAloud" = "Reading aloud";
 "settings.shortcuts.reading" = "While reading";
 "settings.shortcuts.window" = "Window and tabs";
@@ -349,7 +349,7 @@
 "shortcut.startEnd" = "Beginning or end of the book";
 "shortcut.light" = "Brighter or dimmer text";
 "shortcut.textSize" = "Bigger or smaller text, or zoom a PDF";
-"shortcut.edr" = "Turn EDR on or off";
+"shortcut.edr" = "Turn HDR on or off";
 "shortcut.tint" = "Next text color";
 "shortcut.contents" = "Show or hide the contents";
 "shortcut.fullScreen" = "Full screen";
