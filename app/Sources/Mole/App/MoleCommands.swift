@@ -114,6 +114,11 @@ struct MoleCommands: Commands {
             Button(L10n.text("highlight.selection"), action: perform { $0.highlightSelection() })
                 .keyboardShortcut("h", modifiers: [.command, .shift])
                 .disabled(state?.hasSelection != true)
+            Button(L10n.text("lookup.action"), action: perform { $0.activeTab?.lookUpSelection() })
+                .keyboardShortcut("d", modifiers: [.control, .command])
+                .disabled(state?.hasSelection != true)
+            Button(L10n.text("translate.action"), action: perform { $0.activeTab?.translateSelection() })
+                .disabled(state?.hasSelection != true || !Self.canTranslate)
             Divider()
             ForEach(PanelPage.allCases) { page in
                 Button(page.title, action: perform { $0.showPanel(page) })
@@ -180,6 +185,12 @@ struct MoleCommands: Commands {
                 if let url = URL(string: "https://github.com/pedrohavay/mole") { NSWorkspace.shared.open(url) }
             }
         }
+    }
+
+    /// CanTranslate reports whether this macOS has the Translation framework.
+    private static var canTranslate: Bool {
+        if #available(macOS 14.4, *) { return true }
+        return false
     }
 
     /// Returns a menu action that runs body with the model.

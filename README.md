@@ -39,6 +39,10 @@ Mole is in early development and has no release builds yet.
   Markdown.
 - Reading positions tied to the text, so the page you were on survives a
   new font size or window size.
+- The system dictionary for any word (force click it, or select it and
+  press ⌃⌘D) and Apple's translation of a selection on macOS 14.4 and later.
+- An estimate of the reading time left in the chapter and in the book,
+  learned from your own pace as you turn pages.
 - A keyboard shortcut for every reading control, and arrow-key navigation in
   the library.
 - English and Brazilian Portuguese, picked from the system language.
@@ -96,6 +100,7 @@ While reading:
 | T or ⌥⌘C | Show or hide the side panel |
 | F or ⌃⌘F | Full screen |
 | Esc | Clear the selection, or leave full screen |
+| ⌃⌘D or force click | Look up the selection or the word in the dictionary |
 
 Anywhere in the window:
 

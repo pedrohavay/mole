@@ -163,6 +163,8 @@
 /* Search in a book */
 "search.prompt" = "Buscar neste livro";
 "search.selection" = "Buscar Seleção";
+"lookup.action" = "Pesquisar";
+"translate.action" = "Traduzir";
 "search.running" = "Buscando… %ld encontrados";
 "search.count.one" = "1 resultado";
 "search.count.other" = "%ld resultados";
@@ -206,6 +208,8 @@
 "status.pages.single" = "%ld de %ld · %ld%%";
 "status.level" = "%ld%%";
 "status.pages.range" = "%ld–%ld de %ld · %ld%%";
+"time.left.chapter" = "%@ até o fim do capítulo";
+"time.left.book" = "%@ até o fim do livro";
 
 /* Settings */
 "settings.general" = "Geral";
@@ -234,6 +238,7 @@
 "shortcut.contents" = "Mostrar ou ocultar o sumário";
 "shortcut.fullScreen" = "Tela cheia";
 "shortcut.exitFullScreen" = "Sair da tela cheia";
+"shortcut.lookUp" = "Pesquisar a seleção, ou clique firme numa palavra";
 "shortcut.addBooks" = "Adicionar livros";
 "shortcut.closeBook" = "Fechar o livro";
 "shortcut.library" = "Biblioteca";

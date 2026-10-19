@@ -33,6 +33,14 @@ final class ReaderTab: Identifiable {
     private(set) var marks: [PageMark] = []
     /// PageText is the text on screen, kept only while VoiceOver runs.
     private(set) var pageText = ""
+    /// TimeLeft estimates the reading time to the end of the chapter and of
+    /// the book, at the reader's pace; nil until a screen of text is known.
+    private(set) var timeLeft: TimeLeft?
+    @ObservationIgnored private var screenShownAt = Date()
+    /// ScreenCharacters is the text on the visible pages, in characters, when
+    /// it lies in one chapter; averageScreen smooths it over screens.
+    @ObservationIgnored private var screenCharacters: Int?
+    @ObservationIgnored private var averageScreen: Double?
 
     private(set) var annotations: [Annotation] = []
     /// Selection is the text the reader dragged over, if any.
@@ -40,6 +48,12 @@ final class ReaderTab: Identifiable {
     /// IsSelecting is set while the pointer drags out a selection.
     var isSelecting = false
     @ObservationIgnored private var selectionStart: Anchor?
+    /// TranslationText is the text the translation popover shows, while it
+    /// is open.
+    var translationText: String?
+    /// LookUpHandler shows the system dictionary for a text at its box in
+    /// the view; the reader canvas sets it.
+    @ObservationIgnored var lookUpHandler: ((String, CGRect) -> Void)?
 
     /// The search of the book, if one was asked for.
     private(set) var query = ""
@@ -70,7 +84,15 @@ final class ReaderTab: Identifiable {
     }
 
     func turn(_ screens: Int) {
-        if session.turn(screens) { refresh() }
+        // Reading one screen and moving on is how the reading pace is
+        // learned; jumps and turning back teach nothing.
+        let readFor = Date().timeIntervalSince(screenShownAt)
+        let characters = screenCharacters
+        guard session.turn(screens) else { return }
+        if screens == 1, let characters {
+            PaceStore.shared.record(characters: characters, seconds: readFor)
+        }
+        refresh()
     }
 
     func go(to page: Int) {
@@ -102,8 +124,37 @@ final class ReaderTab: Identifiable {
         if NSWorkspace.shared.isVoiceOverEnabled, let visibleRange {
             pageText = (try? session.text(of: visibleRange)) ?? ""
         }
+        screenShownAt = Date()
+        screenCharacters = visibleRange.flatMap(Self.characters(in:))
+        if let screenCharacters, screenCharacters >= 200 {
+            averageScreen = averageScreen.map { $0 + 0.2 * (Double(screenCharacters) - $0) } ?? Double(screenCharacters)
+        }
+        refreshTimeLeft()
         refreshMarks()
         revision += 1
+    }
+
+    /// Returns the characters in range when it lies in one chapter. Offsets
+    /// count non-whitespace characters, the unit of the reading pace.
+    private static func characters(in range: TextRange) -> Int? {
+        guard range.start.chapter == range.end.chapter else { return nil }
+        return range.end.offset - range.start.offset
+    }
+
+    /// Estimates the time left from the pages left and the average text on
+    /// a screen.
+    func refreshTimeLeft() {
+        guard let averageScreen, state.pages > 0 else {
+            timeLeft = nil
+            return
+        }
+        let pace = PaceStore.shared.pace
+        let perPage = averageScreen / Double(max(1, state.columns))
+        let pagesLeft = max(0, state.pages - state.lastVisible - 1)
+        let nextChapter = chapters.first { $0.level == 0 && $0.page > state.lastVisible }?.page
+        let chapterLeft = nextChapter.map { max(0, $0 - state.lastVisible - 1) }
+        timeLeft = TimeLeft(chapter: chapterLeft.map { pace.time(for: Int(Double($0) * perPage)) },
+                            book: pace.time(for: Int(Double(pagesLeft) * perPage)))
     }
 
     /// The top-level chapter that holds the first visible page.
@@ -157,6 +208,60 @@ final class ReaderTab: Identifiable {
         guard selection != nil else { return }
         selection = nil
         refreshMarks()
+    }
+
+    /// Selects the word under a point of the view, as a force click does,
+    /// and reports whether there was one. The core counts offsets in
+    /// non-whitespace characters, so the word is found in the text around
+    /// the point and its ends are counted back into offsets.
+    @discardableResult
+    func selectWord(at point: CGPoint) -> Bool {
+        guard let anchor = (try? session.anchor(at: point)) ?? nil else { return false }
+        let before = min(anchor.offset, 40)
+        let around = TextRange(start: Anchor(chapter: anchor.chapter, offset: anchor.offset - before),
+                               end: Anchor(chapter: anchor.chapter, offset: anchor.offset + 40))
+        guard let text = try? session.text(of: around),
+              let word = Self.word(in: text, atCharacter: before) else { return false }
+        let start = anchor.offset - before + word.lowerBound
+        selection = TextRange(start: Anchor(chapter: anchor.chapter, offset: start),
+                              end: Anchor(chapter: anchor.chapter, offset: anchor.offset - before + word.upperBound))
+        refreshMarks()
+        return true
+    }
+
+    /// Returns the word holding the character at index, counted in
+    /// non-whitespace characters of text, as a range of such counts.
+    static func word(in text: String, atCharacter index: Int) -> Range<Int>? {
+        let characters = text.filter { !$0.isWhitespace }.map { $0 }
+        // Positions of the non-whitespace characters, with the gaps between
+        // words, so a word ends at whitespace as well as at punctuation.
+        var gaps = Set<Int>()
+        var count = 0
+        for character in text {
+            if character.isWhitespace { gaps.insert(count) } else { count += 1 }
+        }
+        func isWord(_ i: Int) -> Bool {
+            let c = characters[i]
+            return c.isLetter || c.isNumber || c == "'" || c == "\u{2019}" || c == "-"
+        }
+        guard characters.indices.contains(index), isWord(index) else { return nil }
+        var low = index
+        while low > 0, !gaps.contains(low), isWord(low - 1) { low -= 1 }
+        var high = index + 1
+        while high < characters.count, !gaps.contains(high), isWord(high) { high += 1 }
+        return low..<high
+    }
+
+    /// Shows the system dictionary for the selection.
+    func lookUpSelection() {
+        guard let text = selectedText(), !text.isEmpty, let box = selectionRects().first else { return }
+        lookUpHandler?(text, box)
+    }
+
+    /// Opens the translation popover for the selection.
+    func translateSelection() {
+        guard let text = selectedText(), !text.isEmpty else { return }
+        translationText = text
     }
 
     /// Returns the selected text, or nil when nothing is selected.

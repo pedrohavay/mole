@@ -21,6 +21,14 @@ struct StatusBar: View {
                     .lineLimit(1)
                 Spacer()
                 StatusItem(text: pages(tab.state), meter: tab.state.progress, tint: Theme.secondary)
+                if let left = tab.timeLeft {
+                    Text(left.chapter.map { L10n.format("time.left.chapter", TimeLeft.format($0)) }
+                        ?? L10n.format("time.left.book", TimeLeft.format(left.book)))
+                        .font(Theme.digits)
+                        .foregroundStyle(Theme.tertiary)
+                        .lineLimit(1)
+                        .help(L10n.format("time.left.book", TimeLeft.format(left.book)))
+                }
             } else {
                 Text(L10n.bookCount(model.books.count))
                     .font(Theme.digits)

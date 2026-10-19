@@ -227,6 +227,16 @@ final class ReaderCoordinator {
         }
     }
 
+    /// Looks up the selection, or the word under point when the point is
+    /// outside it, in the system dictionary.
+    func lookUp(at point: CGPoint) {
+        guard let tab else { return }
+        let inSelection = tab.selectionRects().contains { $0.insetBy(dx: -2, dy: -2).contains(point) }
+        if inSelection || tab.selectWord(at: point) {
+            tab.lookUpSelection()
+        }
+    }
+
     /// Returns the context menu for a point of the page.
     func menu(at point: CGPoint) -> NSMenu? {
         guard let tab else { return nil }
@@ -246,6 +256,14 @@ final class ReaderCoordinator {
             menu.addItem(ActionMenuItem(L10n.text("search.selection"), image: "magnifyingglass") { [model] in
                 model.searchSelection()
             })
+            menu.addItem(ActionMenuItem(L10n.text("lookup.action"), image: "character.book.closed") {
+                tab.lookUpSelection()
+            })
+            if #available(macOS 14.4, *) {
+                menu.addItem(ActionMenuItem(L10n.text("translate.action"), image: "translate") {
+                    tab.translateSelection()
+                })
+            }
             menu.addItem(.separator())
         } else if let highlight = tab.highlight(at: point) {
             menu.addItem(ActionMenuItem(L10n.text("note.edit"), image: "note.text") { [weak self] in

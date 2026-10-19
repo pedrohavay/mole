@@ -77,9 +77,39 @@ struct Verifier {
             model.highlightSelection(color: 2)
             model.toggleBookmark()
             report("highlights \(tab.highlights.count), bookmarks \(tab.bookmarks.count), bookmarked \(tab.isBookmarked), marks \(tab.marks.count)")
-            model.showPanel(.search)
-            tab.find("pipeline")
-            waitForSearch(tab, started: Date())
+            lookUp(tab, in: view)
+        }
+    }
+
+    /// Selects a word by its position, opens the dictionary and the
+    /// translation for it, and reports the reading time left.
+    private func lookUp(_ tab: ReaderTab, in view: EDRMetalView) {
+        let size = view.bounds.size
+        let found = tab.selectWord(at: CGPoint(x: size.width * 0.45, y: size.height * 0.5))
+        report("word at the middle of the page: \(found ? tab.selectedText() ?? "" : "none")")
+        if let left = tab.timeLeft {
+            report("time left: chapter \(left.chapter.map { TimeLeft.format($0) } ?? "-"), book \(TimeLeft.format(left.book))")
+        }
+        let before = Set(NSApp.windows.map(ObjectIdentifier.init))
+        tab.lookUpSelection()
+        after(1.5) {
+            let shown = NSApp.windows.filter { $0.isVisible && !before.contains(ObjectIdentifier($0)) }
+            report("look up opened \(shown.map { String(describing: type(of: $0)) })")
+            if let panel = shown.first(where: { String(describing: type(of: $0)).contains("Popover") }) ?? shown.last {
+                capture("lookup.png", window: panel)
+            }
+            shown.forEach { $0.orderOut(nil) }
+            tab.translateSelection()
+            after(1.5) {
+                let translation = NSApp.windows.filter { $0.isVisible && !before.contains(ObjectIdentifier($0)) }
+                report("translation opened \(translation.map { String(describing: type(of: $0)) })")
+                if let window = translation.first { capture("translation.png", window: window) }
+                tab.translationText = nil
+                tab.clearSelection()
+                model.showPanel(.search)
+                tab.find("pipeline")
+                waitForSearch(tab, started: Date())
+            }
         }
     }
 

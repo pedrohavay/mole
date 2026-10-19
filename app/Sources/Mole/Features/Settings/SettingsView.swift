@@ -166,6 +166,7 @@ struct Shortcut: Identifiable {
         Shortcut(keys: "T  ⌥⌘C", action: "shortcut.contents"),
         Shortcut(keys: "F  ⌃⌘F", action: "shortcut.fullScreen"),
         Shortcut(keys: "⎋", action: "shortcut.exitFullScreen"),
+        Shortcut(keys: "⌃⌘D", action: "shortcut.lookUp"),
     ]
 
     /// The menu commands, which work anywhere in the window.

@@ -163,6 +163,8 @@
 /* Search in a book */
 "search.prompt" = "Search this book";
 "search.selection" = "Search for Selection";
+"lookup.action" = "Look Up";
+"translate.action" = "Translate";
 "search.running" = "Searching… %ld found";
 "search.count.one" = "1 result";
 "search.count.other" = "%ld results";
@@ -206,6 +208,8 @@
 "status.pages.single" = "%ld of %ld · %ld%%";
 "status.level" = "%ld%%";
 "status.pages.range" = "%ld–%ld of %ld · %ld%%";
+"time.left.chapter" = "%@ left in chapter";
+"time.left.book" = "%@ left in book";
 
 /* Settings */
 "settings.general" = "General";
@@ -234,6 +238,7 @@
 "shortcut.contents" = "Show or hide the contents";
 "shortcut.fullScreen" = "Full screen";
 "shortcut.exitFullScreen" = "Leave full screen";
+"shortcut.lookUp" = "Look up the selection, or force click a word";
 "shortcut.addBooks" = "Add books";
 "shortcut.closeBook" = "Close the book";
 "shortcut.library" = "Library";

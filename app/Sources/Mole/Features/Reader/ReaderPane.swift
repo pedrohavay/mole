@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Translation
 
 /// ReaderPane shows an open book on the EDR canvas, with the controls that
 /// float over it: the selection bar, the highlight editor and the bookmark
@@ -45,6 +46,14 @@ struct ReaderPane: View {
                         }
                         .position(bar)
                         .transition(.opacity)
+                    }
+                    // The anchor stays while there is a selection, so the
+                    // popover sees its binding turn on.
+                    if !tab.isSelecting, let box = tab.selectionRects().first {
+                        Color.clear
+                            .frame(width: max(2, box.width), height: max(2, box.height))
+                            .offset(x: box.minX, y: box.minY)
+                            .modifier(TranslationPopover(tab: tab))
                     }
                     if let editing {
                         Color.clear
@@ -120,6 +129,7 @@ struct ReaderCanvas: NSViewRepresentable {
         view.onScroll = { coordinator.scroll($0) }
         view.onMenu = { coordinator.menu(at: $0) }
         view.onCopy = { coordinator.model.copySelection() }
+        view.onLookUp = { coordinator.lookUp(at: $0) }
         view.canCopy = { coordinator.tab?.selection != nil }
         return view
     }
@@ -129,11 +139,29 @@ struct ReaderCanvas: NSViewRepresentable {
         coordinator.onEdit = onEdit
         if coordinator.tab !== tab {
             coordinator.tab = tab
+            tab.lookUpHandler = { [weak view] text, box in view?.showDefinition(of: text, at: box) }
             coordinator.reset()
             // Take the keys for the newly shown book; later updates leave
             // focus where the user put it.
             view.window?.makeFirstResponder(view)
         }
         coordinator.update(view)
+    }
+}
+
+/// TranslationPopover shows Apple's translation of the selection, on macOS
+/// 14.4 and later, where the Translation framework has it.
+@MainActor
+private struct TranslationPopover: ViewModifier {
+    let tab: ReaderTab
+
+    func body(content: Content) -> some View {
+        if #available(macOS 14.4, *) {
+            content.translationPresentation(
+                isPresented: Binding { tab.translationText != nil } set: { if !$0 { tab.translationText = nil } },
+                text: tab.translationText ?? "")
+        } else {
+            content
+        }
     }
 }
