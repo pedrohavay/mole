@@ -7,6 +7,7 @@ import SwiftUI
 struct MoleApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     @State private var launch: Launch
+    @State private var updater: Updater
 
     init() {
         // The library opens before the first scene is built, so the menus
@@ -14,6 +15,9 @@ struct MoleApp: App {
         let launch = Launch()
         launch.start()
         _launch = State(initialValue: launch)
+        // The self-checks quit on their own and leave updates alone.
+        let arguments = LaunchArguments.parse()
+        _updater = State(initialValue: Updater(start: !arguments.smokeTest && arguments.verifyDirectory == nil))
     }
 
     var body: some Scene {
@@ -34,12 +38,13 @@ struct MoleApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1420, height: 900)
-        .commands { MoleCommands(model: launch.model) }
+        .commands { MoleCommands(model: launch.model, updater: updater) }
 
         Settings {
             if let model = launch.model {
                 SettingsView()
                     .environment(model)
+                    .environment(updater)
                     .environment(\.accent, model.accent)
                     .tint(model.accent)
                     .preferredColorScheme(.dark)

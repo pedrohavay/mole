@@ -128,6 +128,33 @@ so hits appear as they are found.
 window publishes a `MenuState` with `focusedSceneValue` and the menus read
 that.
 
+## Updates
+
+`Updater` wraps Sparkle's `SPUStandardUpdaterController`. It starts only
+when Info.plist names an HTTPS feed (`SUFeedURL`) and holds the EdDSA public
+key that verifies updates (`SUPublicEDKey`). The Makefile writes both through
+`scripts/bundle.sh`, from `SPARKLE_FEED_URL` and `SPARKLE_PUBLIC_KEY`; only
+releases set the key, so development and CI builds never start the updater,
+and the app menu's Check for Updates item and the Updates section of
+Settings are hidden. The self-checks (`--smoke-test`, `--verify-dir`) never
+start it either, so they stay off the network and out of the user defaults.
+`SUVerifyUpdateBeforeExtraction` makes Sparkle check the signature before it
+unpacks an update.
+
+Sparkle comes from SwiftPM as a binary framework. `bundle.sh` copies it into
+`Contents/Frameworks`, where the executable's rpath points, without its XPC
+services, which only sandboxed apps use. `scripts/release.sh` signs its
+nested code inside out, then the app, all with the hardened runtime. Library
+validation then loads Sparkle because both carry the same team ID; an ad hoc
+dry run has no team ID, so only that build turns library validation off.
+
+Each release publishes `appcast.xml` next to the zip, and the app reads the
+one of the latest GitHub release. `release.sh` writes the appcast from the
+app's Info.plist (version, build number, minimum macOS), signs the zip with
+Sparkle's `sign_update`, and checks the signature against the app's public
+key with CryptoKit (`scripts/ed25519-verify.swift`) before anything reaches
+`build/release`.
+
 ## Localization
 
 `L10n` reads `Localizable.strings` from the SwiftPM resource bundle, which

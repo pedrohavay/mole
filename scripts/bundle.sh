@@ -6,6 +6,12 @@
 #
 # VERSION is the marketing version (0.1.0); BUILD is a build number that
 # only grows, which macOS uses to tell builds of one version apart.
+#
+# Environment:
+#   SPARKLE_FEED_URL    the appcast the updater reads, written to Info.plist
+#                       as SUFeedURL
+#   SPARKLE_PUBLIC_KEY  the EdDSA public key that verifies updates
+#                       (SUPublicEDKey); without it the updater stays off
 set -eu
 
 if [ $# -ne 5 ]; then
@@ -17,6 +23,8 @@ APP=$2
 VERSION=$3
 BUILD=$4
 BUNDLE_ID=$5
+SPARKLE_FEED_URL=${SPARKLE_FEED_URL:-}
+SPARKLE_PUBLIC_KEY=${SPARKLE_PUBLIC_KEY:-}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 LANGUAGES="en pt-BR"
 
@@ -31,6 +39,20 @@ cp "$ROOT/assets/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 # the user's text editor.
 cp "$ROOT/LICENSE" "$APP/Contents/Resources/LICENSE.txt"
 cp "$ROOT/THIRD_PARTY_NOTICES" "$APP/Contents/Resources/THIRD_PARTY_NOTICES.txt"
+
+# Sparkle, the updater, loads from Contents/Frameworks, where the
+# executable's rpath points (see app/Package.swift). Its XPC services serve
+# only sandboxed apps, and Mole is not one, so they are left out, along
+# with the headers, which only compilers read. That breaks the framework's
+# seal, so it is signed again; release.sh signs its nested code with the
+# release identity.
+SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
+mkdir -p "$APP/Contents/Frameworks"
+ditto "$BIN_DIR/Sparkle.framework" "$SPARKLE"
+for part in XPCServices Headers PrivateHeaders Modules; do
+	rm -rf "${SPARKLE:?}/$part" "$SPARKLE"/Versions/*/"$part"
+done
+codesign --force --sign - "$SPARKLE" >/dev/null 2>&1
 
 # The main bundle must list its languages too, or AppKit shows the system
 # menus (Edit, Window, Help) in English whatever the user's language.
@@ -49,6 +71,22 @@ for language in $LANGUAGES; do
 	LOCALIZATIONS="$LOCALIZATIONS		<string>$language</string>
 "
 done
+
+# The updater's keys. Sparkle verifies each update against the public key
+# before it extracts it (SUVerifyUpdateBeforeExtraction).
+UPDATES=""
+if [ -n "$SPARKLE_FEED_URL" ]; then
+	UPDATES="	<key>SUFeedURL</key>
+	<string>$SPARKLE_FEED_URL</string>
+"
+fi
+if [ -n "$SPARKLE_PUBLIC_KEY" ]; then
+	UPDATES="$UPDATES	<key>SUPublicEDKey</key>
+	<string>$SPARKLE_PUBLIC_KEY</string>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
+"
+fi
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -101,7 +139,7 @@ $LOCALIZATIONS	</array>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
-</dict>
+$UPDATES</dict>
 </plist>
 PLIST
 

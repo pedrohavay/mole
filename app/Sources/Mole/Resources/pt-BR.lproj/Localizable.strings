@@ -193,6 +193,7 @@
 "menu.find" = "Buscar no Livro…";
 "menu.findNext" = "Buscar Próximo";
 "menu.findPrevious" = "Buscar Anterior";
+"menu.checkForUpdates" = "Buscar Atualizações…";
 
 /* Sidebar and tabs */
 "sidebar.show" = "Mostrar Barra Lateral";
@@ -221,6 +222,9 @@
 "settings.accent.note" = "Usada na seleção, na aba ativa e nos controles. A página nunca recebe a cor de destaque.";
 "settings.language" = "Idioma";
 "settings.language.note" = "O Mole segue o idioma definido em Ajustes do Sistema › Geral › Idioma e Região. Há inglês e português do Brasil.";
+"settings.updates" = "Atualizações";
+"settings.updates.automatic" = "Buscar atualizações automaticamente";
+"settings.updates.note" = "O Mole procura uma versão nova uma vez por dia e pergunta antes de instalá-la.";
 "settings.text" = "Texto";
 "settings.light" = "Luz";
 "settings.light.note" = "O brilho é uma fração do que a tela consegue mostrar acima do branco SDR neste momento. Sem EDR, as letras param no branco SDR.";

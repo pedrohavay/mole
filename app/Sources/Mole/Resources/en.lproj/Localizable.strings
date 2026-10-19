@@ -193,6 +193,7 @@
 "menu.find" = "Find in Book…";
 "menu.findNext" = "Find Next";
 "menu.findPrevious" = "Find Previous";
+"menu.checkForUpdates" = "Check for Updates…";
 
 /* Sidebar and tabs */
 "sidebar.show" = "Show Sidebar";
@@ -221,6 +222,9 @@
 "settings.accent.note" = "Used for selection, the active tab and controls. The page itself never takes the accent.";
 "settings.language" = "Language";
 "settings.language.note" = "Mole follows the language set in System Settings › General › Language & Region. English and Brazilian Portuguese are available.";
+"settings.updates" = "Updates";
+"settings.updates.automatic" = "Automatically check for updates";
+"settings.updates.note" = "Mole looks for a new version once a day and asks before installing it.";
 "settings.text" = "Text";
 "settings.light" = "Light";
 "settings.light.note" = "Brightness is a share of what the screen can show above SDR white right now. Without EDR the text stops at SDR white.";

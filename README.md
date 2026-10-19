@@ -46,6 +46,8 @@ Mole is in early development and has no release builds yet.
 - A keyboard shortcut for every reading control, and arrow-key navigation in
   the library.
 - English and Brazilian Portuguese, picked from the system language.
+- Updates through Sparkle in the builds published on GitHub, checked once a
+  day if you allow it.
 
 ## Installation
 
@@ -142,7 +144,7 @@ the SwiftUI app, and assembles `build/Mole.app`. The other targets:
 | `make test` | Runs the Go and Swift tests. Set `MOLE_TEST_EPUB` to an EPUB file to add the tests that open a real book. |
 | `make verify` | Runs the app's self-check, which captures the library, a book and Settings into `build/verify`. Set `BOOK` to add an EPUB first. |
 | `make lint` | Runs `gofmt` and `go vet` on the core. |
-| `make release` | Builds a signed and notarized `build/release/Mole-<version>.zip`; see below. |
+| `make release` | Builds a signed and notarized `build/release/Mole-<version>.zip` and, with the updater set up, its `appcast.xml`; see below. |
 | `make notices` | Regenerates `THIRD_PARTY_NOTICES` after a dependency changes. |
 | `make clean` | Removes the build products and keeps the MuPDF build. |
 | `make distclean` | Removes everything, MuPDF included. |
@@ -165,28 +167,137 @@ to use another database file.
 
 ## Making a release
 
-A release needs a "Developer ID Application" certificate in the keychain
-and a notarytool profile with the credentials of the same Apple Developer
-team. Store the profile once:
+A version tag starts the release workflow
+(`.github/workflows/release.yml`). It checks that the tag matches `VERSION`
+in the Makefile, builds Mole against the pinned MuPDF, signs the app and the
+Sparkle framework inside it with a Developer ID and the hardened runtime,
+starts the signed app once to check it, notarizes it, staples the ticket,
+signs the zip for Sparkle, and publishes a GitHub release with
+`Mole-<version>.zip`, its SHA-256 and `appcast.xml`. The release notes link
+the tagged source code, as the AGPL asks. Installed copies read the appcast
+of the latest release
+(`https://github.com/pedrohavay/mole/releases/latest/download/appcast.xml`)
+to find new versions.
+
+### Setting up the keys
+
+This is done once, and the first three steps need an Apple Developer Program
+membership.
+
+1. Create the "Developer ID Application" certificate. In Xcode, open
+   Settings > Accounts, select the team, click Manage Certificates, then +
+   and Developer ID Application. Only the account holder can create it.
+
+2. Export the certificate with its private key. In Keychain Access, under
+   the login keychain and My Certificates, select "Developer ID Application:
+   Your Name (TEAMID)", check that it has a private key under it, choose
+   File > Export Items, save it as a Personal Information Exchange (.p12)
+   file, and set a password. Then encode it for GitHub:
+
+   ```bash
+   base64 -i DeveloperID.p12 -o DeveloperID.p12.base64
+   ```
+
+3. Create an App Store Connect API key for notarytool. In App Store Connect,
+   open Users and Access > Integrations > App Store Connect API (the account
+   holder requests access the first time), and under Team Keys generate a
+   key with the Developer role. Download `AuthKey_<key ID>.p8`, which App
+   Store Connect offers only once, and note the key ID and the issuer ID
+   shown above the list of keys.
+
+4. Create the update keys. `make app` downloads Sparkle, whose tools are in
+   `app/.build/artifacts/sparkle/Sparkle/bin`. `generate_keys` makes an
+   EdDSA key pair, keeps the private key in the login keychain and prints
+   the public key; `generate_keys -p` prints it again later. Export the
+   private key to a file for GitHub:
+
+   ```bash
+   app/.build/artifacts/sparkle/Sparkle/bin/generate_keys
+   ```
+
+   ```bash
+   app/.build/artifacts/sparkle/Sparkle/bin/generate_keys -x sparkle_private_key
+   ```
+
+   Keep the private key safe in the keychain and in a backup. Installed
+   copies accept only updates signed with it, so losing it means users have
+   to download the next version by hand.
+
+5. Add the secrets and the variable to the repository, under Settings >
+   Secrets and variables > Actions, or with `gh`:
+
+   | Name | Kind | Value |
+   |------|------|-------|
+   | `DEVELOPER_ID_P12` | Secret | The contents of `DeveloperID.p12.base64` |
+   | `DEVELOPER_ID_P12_PASSWORD` | Secret | The password of the .p12 file |
+   | `NOTARY_KEY_P8` | Secret | The contents of `AuthKey_<key ID>.p8` |
+   | `NOTARY_KEY_ID` | Secret | The key ID |
+   | `NOTARY_ISSUER` | Secret | The issuer ID |
+   | `SPARKLE_PRIVATE_KEY` | Secret | The contents of `sparkle_private_key` |
+   | `SPARKLE_PUBLIC_KEY` | Variable | The public key from `generate_keys -p` |
+
+   ```bash
+   gh secret set DEVELOPER_ID_P12 < DeveloperID.p12.base64
+   ```
+
+   ```bash
+   gh variable set SPARKLE_PUBLIC_KEY --body "$(app/.build/artifacts/sparkle/Sparkle/bin/generate_keys -p)"
+   ```
+
+   Then delete the exported files: `DeveloperID.p12`, its base64 copy,
+   `sparkle_private_key`, and the .p8 file once it is stored somewhere safe.
+
+### Cutting a release
+
+Set `VERSION` in the Makefile to the new version, commit it on main, then
+tag that commit and push the tag:
 
 ```bash
-xcrun notarytool store-credentials mole --apple-id you@example.com --team-id TEAMID
+git tag -a v0.2.0 -m "Mole 0.2.0"
 ```
-
-Then build, sign, notarize and pack the release:
 
 ```bash
-make release SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=mole VERSION=0.1.0
+git push origin v0.2.0
 ```
 
-The release is built against the pinned MuPDF, so it targets macOS 14 no
-matter which macOS builds it. The script signs the app with the hardened
-runtime, starts the signed app once to check it, waits for notarization,
-staples the ticket, and writes `build/release/Mole-0.1.0.zip` with its
-SHA-256. Publish both on a GitHub release made from the tagged commit, so
-the release links to its exact source as the AGPL asks. A dry run without an
-Apple account is `make release SIGN_IDENTITY=- NOTARIZE=no`, which is what
-CI does on every push.
+The workflow refuses a tag that does not match `VERSION`. Sparkle compares
+build numbers, and the build number is the count of commits, so each release
+must come from a later commit on main than the one before.
+
+### Releasing from a Mac
+
+`make release` does the same on a Mac with the certificate in the keychain,
+without publishing anything. For notarization it takes either a notarytool
+keychain profile in `NOTARY_PROFILE`, or the API key itself in `NOTARY_KEY`
+(the path of the .p8 file), `NOTARY_KEY_ID` and `NOTARY_ISSUER`. To store a
+profile once and release with it:
+
+```bash
+xcrun notarytool store-credentials mole --key AuthKey_KEYID.p8 --key-id KEYID --issuer ISSUER_ID
+```
+
+```bash
+make release SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=mole SPARKLE_PUBLIC_KEY=PUBLIC_KEY SPARKLE_KEY_FILE=sparkle_private_key
+```
+
+`SPARKLE_KEY_FILE` is a private key exported with `generate_keys -x`; the
+`SPARKLE_PRIVATE_KEY` environment variable can hold the key instead. Leave
+out both Sparkle keys to build a release whose updater is off. The script
+checks the credentials before it builds anything, and checks that the zip's
+signature matches the public key inside the app. Upload the zip, its
+`.sha256` and `appcast.xml` to a GitHub release of the tag `v<version>`.
+
+A dry run without an Apple account is
+`make release SIGN_IDENTITY=- NOTARIZE=no`, which is what CI does on every
+push. An ad hoc signature has no team, so the hardened runtime would refuse
+to load Sparkle; only in this case the app gets the
+`com.apple.security.cs.disable-library-validation` entitlement.
+
+Development and CI builds have no `SPARKLE_PUBLIC_KEY`, so their updater
+stays off and the Check for Updates item is hidden. To try the updater, pass
+a public key on the command line, for example
+`make run SPARKLE_PUBLIC_KEY=PUBLIC_KEY`, and `SPARKLE_FEED_URL` to read
+another appcast.
 
 ## How it works
 
@@ -228,7 +339,7 @@ app/                  Swift: the macOS app (SwiftPM)
 assets/               the app icon (Mole.svg is its source) and the About credits
 scripts/              building MuPDF, bundling, releases, notices and the icon
 docs/                 architecture notes
-.github/workflows/    CI: lint, tests and an unsigned release build
+.github/workflows/    CI (lint, tests, an unsigned release build) and releases
 ```
 
 ## Contributing
@@ -256,13 +367,14 @@ later version. See [LICENSE](LICENSE) for the full text.
 
 Mole links [MuPDF](https://mupdf.com), which Artifex distributes under the
 GNU AGPL version 3 or a commercial license, along with the libraries and
-fonts MuPDF builds in and a few Go modules. Their licenses are in
+fonts MuPDF builds in, a few Go modules, and Sparkle. Their licenses are in
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES), which the app also opens from
 Help > Third-Party Notices.
 
 ## Acknowledgements
 
-[MuPDF](https://mupdf.com) lays out and renders the books, and
+[MuPDF](https://mupdf.com) lays out and renders the books,
 [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) gives the core SQLite
-without a C dependency of its own. This software is based in part on the
+without a C dependency of its own, and [Sparkle](https://sparkle-project.org)
+keeps the app up to date. This software is based in part on the
 work of the Independent JPEG Group.
