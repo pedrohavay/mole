@@ -82,6 +82,11 @@ func TestJSONShapes(t *testing.T) {
 			want: `{"page":4,"index":1,"rect":{"x":1,"y":2,"width":3,"height":4}}`,
 		},
 		{
+			name: "Language",
+			give: languageJSON{Language: "pt-BR"},
+			want: `{"language":"pt-BR"}`,
+		},
+		{
 			name: "Paragraph",
 			give: paragraphJSON{Range: r, Text: "Some text.", Continued: true},
 			want: `{"range":{"start":{"chapter":1,"offset":2},"end":{"chapter":1,"offset":9}},"text":"Some text.","continued":true}`,

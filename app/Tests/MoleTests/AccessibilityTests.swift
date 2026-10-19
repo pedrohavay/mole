@@ -61,6 +61,52 @@ final class ReadAloudTests: XCTestCase {
         XCTAssertEqual(ReadAloud.language(of: "zh-Hans"), "zh")
     }
 
+    func testLanguageTags() {
+        XCTAssertEqual(ReadAloud.languageTag("en"), "en")
+        XCTAssertEqual(ReadAloud.languageTag("pt_BR"), "pt-BR")
+        XCTAssertEqual(ReadAloud.languageTag("eng-GB"), "en-GB")
+        XCTAssertEqual(ReadAloud.languageTag("FR"), "fr")
+        for nothing in ["", "und", "mul", "zxx", "English", "xx-YY"] {
+            XCTAssertNil(ReadAloud.languageTag(nothing), nothing)
+        }
+    }
+
+    /// English is a long English sample with many names in it.
+    private static let english = String(repeating: """
+        Continuous delivery is the practice of keeping software ready to release at any time. \
+        The pipeline runs the tests whenever someone pushes a change, and the team fixes a broken build first. \
+        Christie Wilson, Leslie Hames and Kathleen Rossland worked on this chapter together. \
+
+        """, count: 12)
+
+    func testTheDeclaredLanguageWins() {
+        var read = false
+        func text() -> String {
+            read = true
+            return Self.english
+        }
+        XCTAssertEqual(ReadAloud.readingLanguage(declared: "pt-BR", text: text(), preferred: ["en"]), "pt-BR")
+        XCTAssertFalse(read, "the text is read although the book declares its language")
+    }
+
+    func testALongSampleGivesTheLanguageOfTheText() {
+        XCTAssertGreaterThanOrEqual(Self.english.count, ReadAloud.minimumSample)
+        for declared in [nil, "und", "English"] {
+            XCTAssertEqual(ReadAloud.readingLanguage(declared: declared, text: Self.english, preferred: ["pt-BR"]), "en",
+                           declared ?? "nil")
+        }
+    }
+
+    func testShortTextFallsBackToThePreferredLanguages() {
+        // A copyright page alone once read as Norwegian.
+        let names = "Cover designer: Leslie Hames"
+        XCTAssertEqual(ReadAloud.readingLanguage(declared: nil, text: names, preferred: ["pt-BR"]), "pt-BR")
+        let picked = ReadAloud.readingLanguage(declared: nil, text: names, preferred: ["pt-BR", "en-US"])
+        XCTAssertTrue(picked == "pt-BR" || picked == "en-US", picked ?? "nil")
+        XCTAssertEqual(ReadAloud.readingLanguage(declared: nil, text: "", preferred: ["fr-CA", "en"]), "fr-CA")
+        XCTAssertNil(ReadAloud.readingLanguage(declared: nil, text: names, preferred: []))
+    }
+
     func testPicksAVoiceInTheBooksLanguage() throws {
         guard !ReadAloud.voices(in: ["en"]).isEmpty else { throw XCTSkip("no English voice is installed") }
         XCTAssertEqual(ReadAloud.voice(for: "en", picked: "").map { ReadAloud.language(of: $0.language) }, "en")

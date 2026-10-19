@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import NaturalLanguage
 import Observation
 
 /// PageMark is something painted under the text of the visible pages, in
@@ -51,7 +50,7 @@ final class ReaderTab: Identifiable {
     /// Paragraphs caches the paragraphs of the visible pages for the
     /// revision they were read at; they are read only when asked for.
     @ObservationIgnored private var paragraphs: (revision: Int, list: [PageParagraph])?
-    @ObservationIgnored private var detectedLanguage: String??
+    @ObservationIgnored private var bookLanguage: String??
     /// TimeLeft estimates the reading time to the end of the chapter and of
     /// the book, at the reader's pace; nil until a screen of text is known.
     private(set) var timeLeft: TimeLeft?
@@ -205,23 +204,27 @@ final class ReaderTab: Identifiable {
         return list
     }
 
-    /// Language is the language of the book's text, as a BCP 47 code such as
-    /// "en" or "pt", guessed from a few pages of text from where the reader
-    /// first asked; nil when unclear. A single page, such as a copyright
-    /// page full of names, is too little to tell.
+    /// Language is the language to read the book aloud in, as a BCP 47 tag
+    /// such as "en" or "pt-BR": the one the book declares, or else one worked
+    /// out from its text and the user's languages (see
+    /// ReadAloud.readingLanguage). It is worked out once, when first asked.
     var language: String? {
-        if let detectedLanguage { return detectedLanguage }
-        guard let start = visibleRange?.start,
-              let ahead = try? session.paragraphs(of: TextRange(start: start, end: .endOfBook), limit: 4000)
-        else { return nil }
-        let text = ahead.map(\.text).joined(separator: "\n")
-        let recognizer = NLLanguageRecognizer()
-        recognizer.processString(text)
-        let language = recognizer.dominantLanguage.map(\.rawValue)
-        // Near the end of a short book there may be too little text; guess
-        // again later rather than keep a poor guess.
-        if text.count >= 1000 { detectedLanguage = .some(language) }
+        if let bookLanguage { return bookLanguage }
+        let declared = (try? session.language()) ?? nil
+        let language = ReadAloud.readingLanguage(declared: declared, text: sampleText(),
+                                                 preferred: Locale.preferredLanguages)
+        // Before the first layout there is no text to look at yet.
+        if visibleRange != nil { bookLanguage = .some(language) }
         return language
+    }
+
+    /// Returns a few pages of text from the top of the screen, for a book
+    /// that declares no language.
+    private func sampleText() -> String {
+        guard let start = visibleRange?.start,
+              let ahead = try? session.paragraphs(of: TextRange(start: start, end: .endOfBook), limit: 6000)
+        else { return "" }
+        return ahead.map(\.text).joined(separator: "\n")
     }
 
     // MARK: Marks

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 
+	"mole/core/internal/epub"
 	"mole/core/internal/mupdf"
 )
 
@@ -111,6 +112,18 @@ func (s *Session) Close() {
 		s.text.close()
 	}
 	s.doc.Close()
+}
+
+// Language returns the language the book declares, normally a BCP 47 tag
+// such as "en" or "pt-BR": an EPUB's dc:language, or the language in the
+// metadata of other documents. It returns "" when the book declares none.
+func (s *Session) Language() string {
+	// A file that is not an EPUB has no package document to read; MuPDF's
+	// metadata covers it.
+	if language, err := epub.Language(s.path); err == nil && language != "" {
+		return language
+	}
+	return s.doc.Metadata(mupdf.MetaLanguage)
 }
 
 // Layout reflows the book for geo and fontSize and shows the screen that
