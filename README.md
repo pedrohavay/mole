@@ -102,8 +102,9 @@ app/                  Swift: the macOS app (SwiftPM)
     Resources/        string tables (en, pt-BR)
     Support/          localization, formatting, window chrome
   Tests/MoleTests/
-assets/               app icon
-scripts/              bundling
+assets/               app icon: Mole.svg is the source; scripts/icon.sh renders
+                      the PNGs and AppIcon.icns from it (needs librsvg)
+scripts/              bundling and the app icon (icon.sh)
 docs/                 architecture notes
 ```
 

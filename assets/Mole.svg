@@ -46,7 +46,29 @@
         <path d="M 433 600 Q 433 620 440 631 Q 447 620 447 600 Z"/>
       </g>
     </g>
+
+    <!-- The shadow of Apple's macOS icon grid, measured on the system icons:
+         a soft shadow 12 px below the body and a short one at its edge. -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="12" result="soft"/>
+      <feOffset in="soft" dy="12" result="softOffset"/>
+      <feComponentTransfer in="softOffset" result="softShadow">
+        <feFuncA type="linear" slope="0.28"/>
+      </feComponentTransfer>
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1" result="edge"/>
+      <feOffset in="edge" dy="1" result="edgeOffset"/>
+      <feComponentTransfer in="edgeOffset" result="edgeShadow">
+        <feFuncA type="linear" slope="0.12"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode in="softShadow"/>
+        <feMergeNode in="edgeShadow"/>
+      </feMerge>
+    </filter>
   </defs>
+
+  <!-- Only the shadow of this rectangle is drawn; the body covers the rest. -->
+  <rect x="100" y="100" width="824" height="824" rx="185" ry="185" fill="#000" filter="url(#shadow)"/>
 
   <g clip-path="url(#squircle)">
     <!-- Subsolo -->
