@@ -1,7 +1,7 @@
 // Package mupdf wraps the parts of MuPDF the reader needs: reflowing a book
 // (EPUB, MOBI, FB2 or HTML) to a page size, rendering pages as coverage
-// masks or PNG images, positions that survive a relayout and the text of a
-// page.
+// masks with color and image layers or as PNG images, the images of a page,
+// positions that survive a relayout and the text of a page.
 //
 // Every Document has its own MuPDF context, so different documents may be
 // used on different goroutines at the same time.
@@ -21,6 +21,8 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"image"
+	"runtime"
 	"strings"
 	"unsafe"
 )
@@ -103,32 +105,121 @@ func (doc *Document) Layout(width, height, em float64) (int, error) {
 	return int(n), nil
 }
 
-// RenderLayers draws page into width x height regions of text and images
-// that start at offset and have rows of stride bytes; the two buffers have
-// the same size. Each byte of text is the coverage of text, in full ink
-// whatever its color, and of vector lines: 0 for empty paper, 255 for full
-// ink. Filled boxes (CSS backgrounds) are left out, so a dark box neither
-// glows nor hides its text. Each byte of images is the
-// luminance of the images and shadings on a black page: photographs and
-// dark pictures as they are, line art (mostly light images, such as
-// diagrams) inverted so that its lines are light. It reports whether the
-// page draws any image or shading.
-func (doc *Document) RenderLayers(page int, scale float64, text, images []byte, offset, width, height, stride int) (bool, error) {
-	if width <= 0 || height <= 0 {
-		return false, nil
+// Pictures says how RenderLayers draws images.
+type Pictures int
+
+// The ways RenderLayers draws images.
+const (
+	// PicturesNight draws photographs and dark pictures as they are and
+	// line art (mostly light images, such as diagrams) with its lightness
+	// inverted and its hues kept, so that its lines glow instead of its
+	// paper.
+	PicturesNight Pictures = iota
+	// PicturesOriginal draws every image as on a white page.
+	PicturesOriginal
+	// PicturesHidden draws no image.
+	PicturesHidden
+)
+
+// Layers are the buffers RenderLayers draws a page into: regions of Width x
+// Height pixels that start at pixel Offset and have rows of Stride pixels.
+// Text has one byte per pixel. Colors and Images have four, RGBA in sRGB
+// with premultiplied alpha, and must be all zero where the page goes;
+// either may be nil to draw nothing into it.
+type Layers struct {
+	Text, Colors, Images []byte
+	Offset               int
+	Width, Height        int
+	Stride               int
+}
+
+// Drawn reports which of the optional layers a page drew into.
+type Drawn struct {
+	Colors bool // text or lines in a hue
+	Images bool // images or shadings
+}
+
+// RenderLayers draws page into l. Each byte of Text is the coverage of
+// text, in full ink whatever its color, and of vector lines: 0 for empty
+// paper, 255 for full ink. Filled boxes (CSS backgrounds) are left out, so a
+// dark box neither glows nor hides its text. Colors holds the hue of text
+// and lines that have one, lightened where it is dark so that it shows on
+// a black page; black, white and gray text is left out of it, for the
+// reader's tint. Images holds the images and shadings on a black page, as
+// pictures says.
+func (doc *Document) RenderLayers(page int, scale float64, l Layers, pictures Pictures) (Drawn, error) {
+	if l.Width <= 0 || l.Height <= 0 {
+		return Drawn{}, nil
 	}
-	if len(images) != len(text) || offset < 0 || offset+(height-1)*stride+width > len(text) {
-		return false, errors.New("render: region outside the layers")
+	end := l.Offset + (l.Height-1)*l.Stride + l.Width
+	if l.Offset < 0 || l.Width > l.Stride || end > len(l.Text) ||
+		(l.Colors != nil && 4*end > len(l.Colors)) || (l.Images != nil && 4*end > len(l.Images)) {
+		return Drawn{}, errors.New("render: region outside the layers")
+	}
+	if pictures == PicturesHidden {
+		l.Images = nil
+	}
+	// The buffers are referred to from a C struct, so they must not move.
+	var pinner runtime.Pinner
+	defer pinner.Unpin()
+	pin := func(layer []byte, offset int) *C.uchar {
+		if layer == nil {
+			return nil
+		}
+		p := &layer[offset]
+		pinner.Pin(p)
+		return (*C.uchar)(unsafe.Pointer(p))
+	}
+	layers := C.md_layers{
+		text:   pin(l.Text, l.Offset),
+		colors: pin(l.Colors, 4*l.Offset),
+		images: pin(l.Images, 4*l.Offset),
+		width:  C.int(l.Width), height: C.int(l.Height), stride: C.int(l.Stride),
 	}
 	msg := make([]byte, errLen)
-	var drawn C.int
-	status := C.md_render_layers(doc.d, C.int(page), C.float(scale),
-		(*C.uchar)(unsafe.Pointer(&text[offset])), (*C.uchar)(unsafe.Pointer(&images[offset])),
-		C.int(width), C.int(height), C.int(stride), &drawn, cbuf(msg), errLen)
+	var colors, images C.int
+	status := C.md_render_layers(doc.d, C.int(page), C.float(scale), &layers, C.int(pictures),
+		&colors, &images, cbuf(msg), errLen)
 	if status != 0 {
-		return false, fmt.Errorf("render page %d: %s", page, cstr(msg))
+		return Drawn{}, fmt.Errorf("render page %d: %s", page, cstr(msg))
 	}
-	return drawn != 0, nil
+	return Drawn{Colors: colors != 0, Images: images != 0}, nil
+}
+
+// PageImages returns where page draws its images, in drawing order, as
+// boxes in page points. Images inside masks and patterns are left out.
+func (doc *Document) PageImages(page int) ([]Rect, error) {
+	msg := make([]byte, errLen)
+	var boxes *C.md_rect
+	n := C.md_page_images(doc.d, C.int(page), &boxes, cbuf(msg), errLen)
+	if n < 0 {
+		return nil, fmt.Errorf("images of page %d: %s", page, cstr(msg))
+	}
+	defer C.md_free(unsafe.Pointer(boxes))
+	var out []Rect
+	for _, b := range unsafe.Slice(boxes, int(n)) {
+		out = append(out, Rect{X0: float64(b.x0), Y0: float64(b.y0), X1: float64(b.x1), Y1: float64(b.y1)})
+	}
+	return out, nil
+}
+
+// ImagePixels draws an image of page, the one at index in PageImages, as
+// it looks on white paper: at its own resolution, or maxSide pixels on its
+// longer side for a drawing that scales, and never more than maxSide. The
+// result is opaque.
+func (doc *Document) ImagePixels(page, index, maxSide int) (*image.RGBA, error) {
+	msg := make([]byte, errLen)
+	var w, h C.int
+	data := C.md_image_pixels(doc.d, C.int(page), C.int(index), C.int(maxSide), &w, &h, cbuf(msg), errLen)
+	if data == nil {
+		return nil, fmt.Errorf("image %d of page %d: %s", index, page, cstr(msg))
+	}
+	defer C.md_free(unsafe.Pointer(data))
+	return &image.RGBA{
+		Pix:    C.GoBytes(unsafe.Pointer(data), 4*w*h),
+		Stride: 4 * int(w),
+		Rect:   image.Rect(0, 0, int(w), int(h)),
+	}, nil
 }
 
 // RenderPNG draws page in color and returns it encoded as PNG.

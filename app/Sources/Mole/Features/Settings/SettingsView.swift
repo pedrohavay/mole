@@ -114,8 +114,9 @@ private struct GeneralSettings: View {
     }
 }
 
+/// ReadingSettings is the Reading tab: text, pictures and light.
 @MainActor
-private struct ReadingSettings: View {
+struct ReadingSettings: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
@@ -133,9 +134,18 @@ private struct ReadingSettings: View {
                 Picker(L10n.text("text.spread"), selection: $model.settings.spread) {
                     ForEach(Spread.allCases) { Text($0.title).tag($0) }
                 }
-                Picker(L10n.text("images.title"), selection: $model.settings.images) {
-                    ForEach(ImageLight.allCases) { Text($0.title).tag($0) }
+                Toggle(L10n.text("text.bookColors"), isOn: $model.settings.bookColors)
+                Text(L10n.text("text.bookColors.note"))
+                    .font(Theme.caption)
+                    .foregroundStyle(Theme.secondary)
+            }
+            Section(L10n.text("pictures.title")) {
+                Picker(L10n.text("pictures.mode"), selection: $model.settings.pictures) {
+                    ForEach(PictureMode.allCases) { Text($0.title).tag($0) }
                 }
+                Text(L10n.text("pictures.note"))
+                    .font(Theme.caption)
+                    .foregroundStyle(Theme.secondary)
             }
             Section(L10n.text("settings.light")) {
                 LabeledContent(L10n.text("light.level")) {
@@ -154,7 +164,7 @@ private struct ReadingSettings: View {
             ReadAloudSettings()
         }
         .formStyle(.grouped)
-        .frame(height: 650)
+        .frame(height: 720)
     }
 }
 
@@ -244,6 +254,7 @@ struct Shortcut: Identifiable {
         Shortcut(keys: "F  ⌃⌘F", action: "shortcut.fullScreen"),
         Shortcut(keys: "⎋", action: "shortcut.exitFullScreen"),
         Shortcut(keys: "⌃⌘D", action: "shortcut.lookUp"),
+        Shortcut(keys: "⌘+  ⌘−  ⌘0  ⎋", action: "shortcut.picture"),
     ]
 
     /// The menu commands, which work anywhere in the window.

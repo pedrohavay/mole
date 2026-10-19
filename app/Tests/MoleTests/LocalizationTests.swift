@@ -48,7 +48,7 @@ final class LocalizationTests: XCTestCase {
         keys.formUnion(Accent.presets.map { "accent.\($0.key)" })
         keys.formUnion(HighlightColor.all.map { "highlight.\($0.key)" })
         keys.formUnion(PanelPage.allCases.map { "panel.\($0.rawValue)" })
-        keys.formUnion(ImageLight.allCases.map { "images.\(String(describing: $0))" })
+        keys.formUnion(PictureMode.allCases.map { "pictures.\(String(describing: $0))" })
         keys.formUnion((Shortcut.reading + Shortcut.window).map(\.action))
         XCTAssertGreaterThan(keys.count, 50)
         XCTAssertEqual(keys.subtracting(english.keys).sorted(), [])

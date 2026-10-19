@@ -8,6 +8,7 @@ import (
 	"html"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -18,6 +19,9 @@ type FB2 struct {
 	Author   [2]string // first and last name
 	Sections []string  // the body XML of each section, such as "<title><p>One</p></title><p>Text.</p>"
 	Cover    []byte    // a PNG image, or nil
+	// Images are more binaries, PNG or JPEG, by ID; a section shows one
+	// with <image l:href="#ID"/>.
+	Images map[string][]byte
 }
 
 // Write writes the book into a new temporary directory of t and returns the
@@ -42,6 +46,19 @@ func (b FB2) Write(t testing.TB) string {
 	if b.Cover != nil {
 		fmt.Fprintf(&buf, `<binary id="cover.png" content-type="image/png">%s</binary>`, base64.StdEncoding.EncodeToString(b.Cover))
 	}
+	ids := make([]string, 0, len(b.Images))
+	for id := range b.Images {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		kind := "image/png"
+		if bytes.HasPrefix(b.Images[id], []byte("\xFF\xD8")) {
+			kind = "image/jpeg"
+		}
+		fmt.Fprintf(&buf, `<binary id="%s" content-type="%s">%s</binary>`, html.EscapeString(id), kind,
+			base64.StdEncoding.EncodeToString(b.Images[id]))
+	}
 	buf.WriteString("</FictionBook>\n")
 	return File(t, "book.fb2", buf.Bytes())
 }
@@ -65,6 +82,9 @@ type MOBI struct {
 	Author string
 	HTML   string // the body of the book
 	Cover  []byte // an encoded image, or nil
+	// Images are more image records, after the cover; the HTML shows one
+	// with <img recindex="..."/>, the value ImageIndex returns.
+	Images [][]byte
 	// Encrypted marks the book as protected by DRM. Its text is left as
 	// it is, as only the mark matters to a reader that refuses it.
 	Encrypted bool
@@ -89,10 +109,13 @@ func (b MOBI) Write(t testing.TB) string {
 	}
 	textRecords := len(records) - 1
 	firstImage := uint32(0xFFFFFFFF)
-	if b.Cover != nil {
+	if b.Cover != nil || len(b.Images) > 0 {
 		firstImage = uint32(len(records))
+	}
+	if b.Cover != nil {
 		records = append(records, b.Cover)
 	}
+	records = append(records, b.Images...)
 	exth := exthBlock(map[uint32][]byte{100: []byte(b.Author), 503: []byte(b.Title)}, b.Cover != nil)
 
 	var r0 bytes.Buffer
@@ -183,6 +206,15 @@ func palmDatabase(name, kind string, records [][]byte) []byte {
 		out.Write(rec)
 	}
 	return out.Bytes()
+}
+
+// ImageIndex returns the recindex attribute of an img element that shows
+// Images[i]: the place of its record among the image records, from 1.
+func (b MOBI) ImageIndex(i int) string {
+	if b.Cover != nil {
+		i++
+	}
+	return fmt.Sprintf("%05d", i+1)
 }
 
 // palmDOC compresses text with PalmDOC compression, literals only: bytes 1

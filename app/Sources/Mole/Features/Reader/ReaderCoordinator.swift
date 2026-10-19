@@ -23,6 +23,16 @@ final class ReaderCoordinator {
     private var dragged = false
     /// OnEdit opens the editor of a highlight that was clicked.
     var onEdit: ((Annotation, CGPoint) -> Void)?
+    /// OnPicture opens the viewer on a picture that was clicked.
+    var onPicture: ((PagePicture) -> Void)?
+    /// ShowsPicture is set while the picture viewer covers the page.
+    var showsPicture = false {
+        // The viewer sets its own cursor; the next move over the page sets
+        // the page's again.
+        didSet { overPicture = false }
+    }
+    /// OverPicture is set while the pointer shows a picture can be opened.
+    private var overPicture = false
     /// AccessibleRevision is the revision of the pages assistive apps last
     /// heard of, and accessiblePage the first page shown then.
     private var accessibleRevision = -1
@@ -112,10 +122,19 @@ final class ReaderCoordinator {
 
     func draw(_ view: EDRMetalView) {
         guard let tab, let renderer, laidOut != nil else { return }
+        let settings = model.settings
+        do {
+            if try tab.session.setStyle(pictures: settings.pictures, bookColors: settings.bookColors) {
+                drawnRevision = -1
+            }
+        } catch {
+            NSLog("Mole: cannot set the style of %@: %@", tab.book.title, error.localizedDescription)
+        }
         if tab.revision != drawnRevision {
             do {
                 renderer.upload(text: try tab.session.render())
-                renderer.upload(image: try tab.session.imageMask())
+                renderer.upload(colors: try tab.session.textColors())
+                renderer.upload(image: try tab.session.imageLayer())
                 drawnRevision = tab.revision
             } catch {
                 NSLog("Mole: cannot render %@: %@", tab.book.title, error.localizedDescription)
@@ -126,9 +145,8 @@ final class ReaderCoordinator {
             warm(view)
             return
         }
-        let settings = model.settings
-        renderer.present(on: view.metalLayer, rgb: Tint.at(settings.tint).rgb, gain: model.gain, gamma: settings.gamma,
-                         imageGain: settings.images.gain(for: model.gain),
+        renderer.present(on: view.metalLayer, tint: Tint.at(settings.tint).rgb, gain: model.gain,
+                         gamma: settings.gamma, imageGain: settings.pictures.gain(for: model.gain),
                          marks: lights(for: tab.marks, scale: laidOut?.scale ?? 1))
     }
 
@@ -169,7 +187,7 @@ final class ReaderCoordinator {
             return
         }
         guard !warmUpScheduled else { return }
-        renderer?.present(on: view.metalLayer, rgb: .zero, gain: 0, gamma: 1)
+        renderer?.present(on: view.metalLayer, tint: .zero, gain: 0, gamma: 1)
         warmUpScheduled = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak view] in
             MainActor.assumeIsolated {
@@ -210,8 +228,8 @@ final class ReaderCoordinator {
     }
 
     /// Handles the mouse in the page. A drag selects text; a click clears
-    /// the selection, opens a highlight, or turns the page (back on the left
-    /// third, forward elsewhere).
+    /// the selection, opens a highlight or a picture, or turns the page (back
+    /// on the left third, forward elsewhere).
     func mouse(_ step: EDRMetalView.MouseStep, at point: CGPoint, event: NSEvent, in view: EDRMetalView) {
         guard let tab else { return }
         switch step {
@@ -240,10 +258,20 @@ final class ReaderCoordinator {
                 tab.clearSelection()
             } else if let highlight = tab.highlight(at: point) {
                 onEdit?(highlight, point)
+            } else if model.settings.pictures != .hidden, let picture = tab.picture(at: point) {
+                onPicture?(picture)
             } else {
                 tab.turn(point.x < view.bounds.width * 0.3 ? -1 : 1)
             }
         }
+    }
+
+    /// Shows a pointing hand over the pictures that a click opens.
+    func hover(at point: CGPoint) {
+        let over = !showsPicture && model.settings.pictures != .hidden && tab?.picture(at: point) != nil
+        guard over != overPicture else { return }
+        overPicture = over
+        (over ? NSCursor.pointingHand : NSCursor.arrow).set()
     }
 
     /// Looks up the selection, or the word under point when the point is
