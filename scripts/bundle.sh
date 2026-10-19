@@ -95,6 +95,20 @@ $LOCALIZATIONS	</array>
 			</array>
 		</dict>
 	</array>
+	<!-- A cover dragged onto a collection inside Mole (BookDrag). -->
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>io.github.pedrohavay.mole.book</string>
+			<key>UTTypeDescription</key>
+			<string>Mole Library Book</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.books</string>
 	<key>LSMinimumSystemVersion</key>

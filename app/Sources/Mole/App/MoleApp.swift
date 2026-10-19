@@ -78,7 +78,9 @@ final class Launch {
             AppDelegate.openFiles = { model.openFiles($0) }
             if let directory = arguments.verifyDirectory {
                 // NSApp does not exist yet while the App is initialized.
-                DispatchQueue.main.async { Verifier(model: model, directory: directory).start() }
+                DispatchQueue.main.async {
+                    Verifier(model: model, directory: directory, folderTree: arguments.verifyFolder).start()
+                }
             }
         } catch {
             if arguments.smokeTest { SmokeTest.fail("cannot open the library: \(error.localizedDescription)") }

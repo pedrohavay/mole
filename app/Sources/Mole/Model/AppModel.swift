@@ -38,7 +38,26 @@ final class AppModel {
     var pane: Pane = .library {
         didSet { saveTabs() }
     }
-    var shelf: Shelf = .all
+    /// Shelf filters the library unless a collection is shown; picking a
+    /// shelf leaves the collection.
+    var shelf: Shelf = .all {
+        didSet { collection = nil }
+    }
+    /// Collection, when set, is the collection the library shows.
+    var collection: Int64?
+    /// Collections and folders are the library's collections and watched
+    /// folders, read again with the books.
+    var collections: [BookCollection] = []
+    var folders: [WatchedFolder] = []
+    /// RenamingCollection is the collection whose name is being edited in
+    /// the sidebar.
+    var renamingCollection: Int64?
+    /// FolderImport, while set, asks how to add the books in some folders.
+    var folderImport: FolderImport?
+    /// ImportingFolders counts the folders being added in the background.
+    var importingFolders = 0
+    /// Syncing holds the watched folders being synced now.
+    var syncing: Set<Int64> = []
     var query = ""
     var selectedBook: Int64?
     private(set) var headroom = Headroom()
@@ -71,7 +90,13 @@ final class AppModel {
 
     @ObservationIgnored private var poll: Timer?
     /// Importer adds books off the main thread, on a library handle of its own.
-    @ObservationIgnored private lazy var importer = Importer(path: library.path)
+    @ObservationIgnored lazy var importer = Importer(path: library.path)
+    /// Watcher syncs the watched folders when files change in them.
+    @ObservationIgnored lazy var watcher = FolderWatcher(ignoring: (library.path as NSString).deletingLastPathComponent) {
+        [weak self] paths in self?.foldersChanged(paths)
+    }
+    /// Resync holds the folders that changed while they were being synced.
+    @ObservationIgnored var resync: Set<Int64> = []
     @ObservationIgnored private var pendingSave: DispatchWorkItem?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
 
@@ -93,6 +118,8 @@ final class AppModel {
         showContents = defaults.bool(forKey: Keys.contents)
         reload()
         restoreTabs()
+        // Folders may have changed while Mole was closed.
+        syncFolders(quietly: true)
         // macOS posts no notification when the headroom changes (brightness
         // keys, the EDR ramp), so it is polled.
         poll = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -134,7 +161,8 @@ final class AppModel {
     var shelfBooks: [Book] {
         let query = query.trimmingCharacters(in: .whitespaces)
         return books.filter { book in
-            shelf.keeps(book) && (query.isEmpty || "\(book.title) \(book.author)".localizedStandardContains(query))
+            let kept = collection.map { book.collections.contains($0) } ?? shelf.keeps(book)
+            return kept && (query.isEmpty || "\(book.title) \(book.author)".localizedStandardContains(query))
         }
     }
 
@@ -155,6 +183,7 @@ final class AppModel {
         } catch {
             NSLog("Mole: cannot list books: %@", error.localizedDescription)
         }
+        reloadCollections()
         for book in books where covers[book.id] == nil {
             guard let data = library.cover(of: book.id) else { continue }
             // Covers can be large; they are decoded at display size, off
@@ -167,6 +196,12 @@ final class AppModel {
         }
     }
 
+    /// Forgets the covers of books whose file changed, so reload reads them
+    /// again.
+    func forgetCovers(of books: [Int64]) {
+        for id in books { covers[id] = nil }
+    }
+
     private func setCover(_ image: CGImage, for book: Int64) {
         // The book may have been removed while its cover was decoding.
         guard books.contains(where: { $0.id == book }) else { return }
@@ -176,10 +211,20 @@ final class AppModel {
     func chooseBooks() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [UTType.epub]
+        panel.canChooseDirectories = true
+        panel.allowedContentTypes = [UTType.epub, .folder]
         panel.prompt = L10n.text("import.prompt")
+        panel.message = L10n.text("import.panel.message")
         guard panel.runModal() == .OK else { return }
-        importBooks(panel.urls.map(\.path))
+        add(panel.urls.map(\.path))
+    }
+
+    /// Adds the books at paths: files at once, and folders after asking how
+    /// (see FolderImportSheet).
+    func add(_ paths: [String]) {
+        let (files, folders) = BookFiles.sort(paths)
+        importBooks(files)
+        if !folders.isEmpty { folderImport = FolderImport(paths: folders) }
     }
 
     /// Adds the EPUB files at paths in the background; done runs on the
@@ -200,9 +245,11 @@ final class AppModel {
     }
 
     /// Adds the EPUB files at paths, as opened from Finder, and opens the
-    /// first one.
+    /// first one. Folders are added as from File > Add Books.
     func openFiles(_ paths: [String]) {
-        importBooks(paths) { [weak self] added in
+        let (files, folders) = BookFiles.sort(paths)
+        if !folders.isEmpty { folderImport = FolderImport(paths: folders) }
+        importBooks(files) { [weak self] added in
             guard let self, let id = added.first, let book = self.books.first(where: { $0.id == id }) else { return }
             self.open(book)
         }
@@ -459,6 +506,20 @@ final class Importer: @unchecked Sendable {
     func add(_ paths: [String]) async -> Result {
         await withCheckedContinuation { continuation in
             queue.async { continuation.resume(returning: self.addNow(paths)) }
+        }
+    }
+
+    /// Runs body on the import queue with the importer's library, after the
+    /// imports queued before it.
+    func run<T: Sendable>(_ body: @escaping @Sendable (Library) throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                continuation.resume(with: Swift.Result {
+                    let library = try self.library ?? Library(path: self.path)
+                    self.library = library
+                    return try body(library)
+                })
+            }
         }
     }
 

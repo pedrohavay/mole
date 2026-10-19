@@ -15,6 +15,11 @@ struct Book: Decodable, Identifiable, Hashable {
     /// book never opened.
     let openedAt: Int64
     let addedAt: Int64
+    /// Collections are the ids of the collections that hold the book.
+    var collections: [Int64] = []
+    /// Missing is set when the book's file left a watched folder. Mole still
+    /// has its copy; the user decides whether to remove the book.
+    var missing = false
 
     /// A book counts as finished from this fraction on, so that a few pages
     /// of index or ads do not keep it on the reading shelf.

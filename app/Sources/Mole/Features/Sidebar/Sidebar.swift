@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Sidebar lists the shelves, the open books and the recently read ones.
+/// Sidebar lists the shelves, the collections, the open books and the
+/// recently read ones.
 @MainActor
 struct Sidebar: View {
     @Environment(AppModel.self) private var model
@@ -11,6 +12,7 @@ struct Sidebar: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
                     shelves
+                    CollectionsSection()
                     openBooks
                     recentBooks
                 }
@@ -43,7 +45,7 @@ struct Sidebar: View {
 
     @ViewBuilder private var shelves: some View {
         ForEach(Shelf.allCases) { shelf in
-            let selected = model.pane == .library && model.shelf == shelf
+            let selected = model.pane == .library && model.collection == nil && model.shelf == shelf
             Button {
                 model.shelf = shelf
                 model.pane = .library
