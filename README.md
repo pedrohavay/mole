@@ -7,9 +7,20 @@
 <p align="center"><b>The first e-reader with HDR text: letters brighter than white on a black page.</b></p>
 
 <p align="center">
+  <a href="https://github.com/pedrohavay/mole/releases/latest"><img alt="Latest version" src="https://img.shields.io/github/v/release/pedrohavay/mole?label=version"></a>
+  <a href="https://github.com/pedrohavay/mole/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/pedrohavay/mole/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="LICENSE"><img alt="License: AGPL-3.0-or-later" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue"></a>
   <img alt="macOS 14 or later" src="https://img.shields.io/badge/macOS-14%2B-lightgrey">
   <img alt="Apple silicon" src="https://img.shields.io/badge/Apple%20silicon-arm64-lightgrey">
+  <a href="https://github.com/pedrohavay/mole/releases/latest/download/Mole.dmg"><img alt="Download the latest version" src="https://img.shields.io/badge/download-latest-brightgreen"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/pedrohavay/mole/releases/latest/download/Mole.dmg"><img alt="Download Mole for macOS" src="https://img.shields.io/badge/Download%20for%20macOS-Mole.dmg-1f6feb?style=for-the-badge&logo=apple&logoColor=white"></a>
+</p>
+
+<p align="center">
+  <img src="assets/screenshots/library.webp" width="880" alt="Mole's library, with the covers of eight classic books">
 </p>
 
 Mole is a book reader for the Mac. It keeps the page black and lights only
@@ -18,8 +29,8 @@ while every other pixel stays dark. The name comes from the animal, which
 lives in the dark and needs very little light to find its way.
 
 > [!NOTE]
-> Mole is in early development. There are no release builds yet, so for now
-> you build it from source.
+> Mole is in early development, so expect rough edges. If something breaks,
+> please [open an issue](https://github.com/pedrohavay/mole/issues).
 
 ## Features
 
@@ -84,7 +95,19 @@ around lines of text.
 
 ## Install
 
-Build Mole from source. You need Xcode 15.4 or later and Go 1.26 or later.
+1. Download [Mole.dmg](https://github.com/pedrohavay/mole/releases/latest/download/Mole.dmg)
+   from the latest release.
+2. Open it and drag Mole to the Applications folder.
+3. Open Mole from Applications.
+
+Mole is signed with a Developer ID and notarized by Apple. The first time
+you open it, macOS asks you to confirm that you want to open an app from
+the internet. When a new version comes out, Mole offers it through Mole >
+Check for Updates.
+
+### Build from source
+
+You need Xcode 15.4 or later and Go 1.26 or later.
 
 ```bash
 git clone https://github.com/pedrohavay/mole.git
@@ -94,14 +117,13 @@ git clone https://github.com/pedrohavay/mole.git
 cd mole && make run
 ```
 
-`make run` builds `build/Mole.app` and opens it. Copy the app to
-`/Applications` to keep it. The first build also downloads MuPDF (about
-65 MB) and compiles it, which takes a minute or two.
+`make run` builds `build/Mole.app` and opens it. The first build also
+downloads MuPDF (about 65 MB) and compiles it, which takes a minute or two.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers the rest of the build.
 
 > [!WARNING]
-> Your build has an ad hoc signature. It runs on the Mac that built it, but
-> Gatekeeper blocks a copy moved to another Mac. Release builds will be
-> signed and notarized.
+> A build from source has an ad hoc signature. It runs on the Mac that
+> built it, but Gatekeeper blocks a copy moved to another Mac.
 
 ## Usage
 
@@ -215,3 +237,6 @@ shows them in Help > Third-Party Notices.
 with no extra C library, and [Sparkle](https://sparkle-project.org) keeps
 the app up to date. This software is based in part on the work of the
 Independent JPEG Group.
+
+The books in the screenshot are public domain editions from
+[Standard Ebooks](https://standardebooks.org).
