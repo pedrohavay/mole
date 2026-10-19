@@ -77,6 +77,11 @@ func TestJSONShapes(t *testing.T) {
 			want: `{"level":0.5,"edr":true,"tint":0,"gamma":2.2,"fontSize":21,"spread":0,"accent":"#112233","images":2}`,
 		},
 		{
+			name: "Paragraph",
+			give: paragraphJSON{Range: r, Text: "Some text.", Continued: true},
+			want: `{"range":{"start":{"chapter":1,"offset":2},"end":{"chapter":1,"offset":9}},"text":"Some text.","continued":true}`,
+		},
+		{
 			name: "Rect",
 			give: rectJSON{X: 1, Y: 2, Width: 3, Height: 4.5},
 			want: `{"x":1,"y":2,"width":3,"height":4.5}`,

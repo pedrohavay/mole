@@ -23,6 +23,10 @@ final class ReaderCoordinator {
     private var dragged = false
     /// OnEdit opens the editor of a highlight that was clicked.
     var onEdit: ((Annotation, CGPoint) -> Void)?
+    /// AccessibleRevision is the revision of the pages assistive apps last
+    /// heard of, and accessiblePage the first page shown then.
+    private var accessibleRevision = -1
+    private var accessiblePage: Int?
 
     /// Layout is what the book was last laid out for.
     private struct Layout: Equatable {
@@ -52,6 +56,8 @@ final class ReaderCoordinator {
     func reset() {
         laidOut = nil
         drawnRevision = -1
+        accessibleRevision = -1
+        accessiblePage = nil
         warmUp = WarmUp(settled: model.headroom.isSettled)
     }
 
@@ -115,6 +121,7 @@ final class ReaderCoordinator {
                 NSLog("Mole: cannot render %@: %@", tab.book.title, error.localizedDescription)
             }
         }
+        updateAccessibility(view)
         if warmUp.isWarming {
             warm(view)
             return
@@ -123,6 +130,16 @@ final class ReaderCoordinator {
         renderer.present(on: view.metalLayer, rgb: Tint.at(settings.tint).rgb, gain: model.gain, gamma: settings.gamma,
                          imageGain: settings.images.gain(for: model.gain),
                          marks: lights(for: tab.marks, scale: laidOut?.scale ?? 1))
+    }
+
+    /// Tells assistive apps about new pages: their paragraphs change, and a
+    /// page turn is announced unless the book is being read aloud.
+    private func updateAccessibility(_ view: EDRMetalView) {
+        guard let tab, tab.revision != accessibleRevision else { return }
+        accessibleRevision = tab.revision
+        let turned = accessiblePage != nil && accessiblePage != tab.state.page
+        accessiblePage = tab.state.page
+        view.pageChanged(announcement: turned && !model.readAloud.isActive ? tab.pageDescription : nil)
     }
 
     /// Turns the marks of the page into rectangles of light, in drawable
@@ -136,6 +153,7 @@ final class ReaderCoordinator {
             case .highlight(let index): color = HighlightColor.at(index).light
             case .selection: color = accent * 0.22
             case .hit(let current): color = current ? accent * 0.3 : SIMD3(repeating: 0.06)
+            case .speech: color = accent * 0.16
             }
             let rect = CGRect(x: mark.rect.minX * scale, y: mark.rect.minY * scale,
                               width: mark.rect.width * scale, height: mark.rect.height * scale)
@@ -177,6 +195,7 @@ final class ReaderCoordinator {
         case (KeyCode.up, _): model.adjustLevel(by: 1.25)
         case (KeyCode.down, _): model.adjustLevel(by: 0.8)
         case (KeyCode.escape, _) where tab.selection != nil: tab.clearSelection()
+        case (KeyCode.escape, _) where model.readAloud.isActive: model.readAloud.stop()
         case (KeyCode.escape, _) where model.isFullScreen: model.toggleFullScreen()
         case (_, "+"), (_, "="): model.adjustFontSize(by: 1)
         case (_, "-"), (_, "_"): model.adjustFontSize(by: -1)

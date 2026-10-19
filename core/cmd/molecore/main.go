@@ -785,6 +785,42 @@ func mole_session_range_rects(s C.int64_t, textRange *C.char) *C.char {
 	return jsonString(out)
 }
 
+type paragraphJSON struct {
+	Range     rangeJSON `json:"range"`
+	Text      string    `json:"text"`
+	Continued bool      `json:"continued"`
+}
+
+// mole_session_paragraphs returns the text of a range a paragraph at a
+// time, on screen or not, as a JSON array of {"range","text","continued"}.
+// A paragraph that runs over a page break comes in two parts, the second
+// with continued set. A positive limit stops at the end of the paragraph
+// that brings the count of characters returned to limit; 0 returns the
+// whole range. The caller frees the result with mole_free.
+//
+//export mole_session_paragraphs
+func mole_session_paragraphs(s C.int64_t, textRange *C.char, limit C.int64_t) *C.char {
+	ss, ok := sessions.get(int64(s))
+	if !ok {
+		fail(errBadHandle)
+		return nil
+	}
+	r, ok := parseRange(textRange)
+	if !ok {
+		return nil
+	}
+	paragraphs, err := ss.book.Reading().Paragraphs(r, int(limit))
+	if err != nil {
+		fail(err)
+		return nil
+	}
+	out := make([]paragraphJSON, len(paragraphs))
+	for i, p := range paragraphs {
+		out[i] = paragraphJSON{Range: toRangeJSON(p.Range), Text: p.Text, Continued: p.Continued}
+	}
+	return jsonString(out)
+}
+
 // mole_session_go_to_anchor shows the screen that holds an anchor and
 // returns 1 if the page changed. It returns 0 when the anchor is already
 // visible, and also on error. The new position is saved.

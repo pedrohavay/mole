@@ -36,8 +36,14 @@ final class AppModel {
     private(set) var covers: [Int64: NSImage] = [:]
     private(set) var tabs: [ReaderTab] = []
     var pane: Pane = .library {
-        didSet { saveTabs() }
+        didSet {
+            // Reading aloud belongs to the book on screen.
+            if readAloud.bookID != nil, readAloud.bookID != activeTab?.id { readAloud.stop() }
+            saveTabs()
+        }
     }
+    /// ReadAloud speaks the open book.
+    let readAloud = ReadAloud()
     /// Shelf filters the library unless a collection is shown; picking a
     /// shelf leaves the collection.
     var shelf: Shelf = .all {
@@ -321,6 +327,7 @@ final class AppModel {
 
     func close(_ readerTab: ReaderTab) {
         guard let index = tabs.firstIndex(where: { $0.id == readerTab.id }) else { return }
+        if readAloud.bookID == readerTab.id { readAloud.stop() }
         // Closing saves the position, which the reload below reads back.
         readerTab.close()
         tabs.remove(at: index)
@@ -397,7 +404,7 @@ final class AppModel {
     /// Shows page of the side panel of the open book.
     func showPanel(_ page: PanelPage) {
         panelPage = page
-        withAnimation(.easeInOut(duration: 0.2)) { showContents = true }
+        Motion.animate { showContents = true }
     }
 
     /// Opens the search of the open book with its field focused.
@@ -428,6 +435,13 @@ final class AppModel {
     var lastHighlightColor: Int {
         get { UserDefaults.standard.integer(forKey: Keys.highlightColor) }
         set { UserDefaults.standard.set(newValue, forKey: Keys.highlightColor) }
+    }
+
+    /// Starts reading the open book aloud from its selection or the top of
+    /// the screen, or pauses or resumes the reading.
+    func toggleReadAloud() {
+        guard let tab = activeTab else { return }
+        readAloud.toggle(tab)
     }
 
     /// Copies the selection of the open book to the pasteboard.
@@ -473,6 +487,7 @@ final class AppModel {
     }
 
     private func prepareToQuit() {
+        readAloud.stop()
         if pendingSave != nil { saveSettings() }
         // Open tabs stay listed for the next launch; closing the sessions
         // only saves their positions.

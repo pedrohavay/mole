@@ -23,6 +23,7 @@ struct LibraryView: View {
                 Text(model.libraryTitle)
                     .font(Theme.heading)
                     .foregroundStyle(Theme.text)
+                    .accessibilityAddTraits(.isHeader)
                 Text(L10n.bookCount(books.count))
                     .font(Theme.label)
                     .foregroundStyle(Theme.tertiary)
@@ -108,12 +109,13 @@ struct LibraryView: View {
             }
             .onChange(of: model.selectedBook) { _, id in
                 guard let id else { return }
-                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id) }
+                Motion.animate(.easeOut(duration: 0.2)) { proxy.scrollTo(id) }
             }
         }
         .focusable()
         .focused($gridFocused)
         .focusEffectDisabled()
+        .accessibilityLabel(model.shelf.title)
         .onMoveCommand { direction in move(direction, in: books) }
         .onKeyPress(.return) {
             guard let book = selected(in: books) else { return .ignored }

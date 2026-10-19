@@ -43,7 +43,9 @@ struct SearchList: View {
     private var field: some View {
         HStack(spacing: Theme.Space.xs + 2) {
             Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(Theme.tertiary)
+                .accessibilityHidden(true)
             TextField(L10n.text("search.prompt"), text: $text)
+                .accessibilityLabel(L10n.text("search.prompt"))
                 .textFieldStyle(.plain)
                 .font(Theme.label)
                 .foregroundStyle(Theme.text)
@@ -122,7 +124,7 @@ struct SearchList: View {
             }
             .onChange(of: tab.currentHit) { _, index in
                 guard let index else { return }
-                withAnimation { proxy.scrollTo(index, anchor: .center) }
+                Motion.animate(.default) { proxy.scrollTo(index, anchor: .center) }
             }
         }
     }
@@ -149,6 +151,7 @@ struct SearchList: View {
             .hoverable(selected: current)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(current ? .isSelected : [])
         .id(index)
     }
 

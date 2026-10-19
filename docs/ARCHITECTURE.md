@@ -113,9 +113,10 @@ Facts that shaped this design, found while prototyping:
 
 ## Marks under the text
 
-Highlights, the selection and search hits are rectangles the core returns
-for a text range (`mole_session_range_rects`), one per line, in view points.
-`ReaderTab` gathers those on screen as `PageMark`s; `ReaderCoordinator`
+Highlights, the selection, search hits and the sentence being read aloud
+are rectangles the core returns for a text range
+(`mole_session_range_rects`), one per line, in view points. `ReaderTab`
+gathers those on screen as `PageMark`s; `ReaderCoordinator`
 turns them into rectangles of light in drawable pixels, and `EDRRenderer`
 paints them first and the text over them, blended as
 `text + mark * (1 - coverage)`. Marks are dim (a fifth of SDR white at most)
@@ -125,6 +126,57 @@ letters instead of a block of light.
 Selection, highlights, notes and bookmarks are all addressed by text
 anchors (a chapter and a count of non-whitespace characters), never by page,
 so they stay put when the book is laid out again.
+
+## Accessibility
+
+The page is drawn into a Metal layer, so AppKit knows nothing of its text.
+`EDRMetalView` describes it to assistive apps itself (`PageAccessibility`):
+it is a group labeled with the book and the page, and its children are
+static text elements, one per paragraph on screen. The core gives the
+paragraphs of a range with `mole_session_paragraphs`, each with its anchors
+and text, split at page breaks so that each part lies on one page; its frame
+is the union of the part's line boxes from `mole_session_range_rects`. The
+elements are made only when an assistive app asks for them and are dropped
+when the page changes, so the page costs nothing while VoiceOver is off.
+
+A page turn posts a layout change and an announcement of the new page and
+chapter, except while the book is read aloud. Custom actions (Next Page,
+Previous Page) and the scroll-by-page actions VoiceOver's scroll commands
+send turn the page; AppKit has no constants for the latter, so the view
+answers them through the older string-based actions.
+
+The rest of the window is SwiftUI, labeled where the default reading falls
+short: the sidebar, the tab strip, the side panel and the status bar are
+labeled groups, rows give a title as the label and counts or progress as
+the value, and context menu commands are also accessibility actions.
+`Motion` leaves out the sidebar and panel animations when Reduce Motion is
+on, and the cover no longer lifts under the pointer. `Theme.contrasting`
+makes the hairlines and the secondary text tokens stronger while Increase
+Contrast is on.
+
+`make verify` walks the accessibility tree through the AX API, as VoiceOver
+sees it, and writes it to `build/verify/ax-*.txt`. The AX API answers only a
+trusted process; started from a terminal that has the Accessibility
+permission, the app is.
+
+## Reading aloud
+
+`ReadAloud` speaks with `AVSpeechSynthesizer`, one utterance per sentence,
+keeping a few in the synthesizer's queue. It asks the core for the
+paragraphs after the place it reached, about 1,500 characters at a time,
+joins the parts of a paragraph that runs over a page break, and splits them
+into sentences with `NLTokenizer`. A sentence's characters are mapped back
+to anchors by counting them the way the core does (whitespace, invisible
+format characters and hyphens take no offset), so the sentence being spoken
+becomes a mark under the text, and each word the synthesizer reaches turns
+the page when it is not on screen. Reading goes on across chapters until
+the end of the book.
+
+MuPDF does not expose an EPUB's language, so `NLLanguageRecognizer` guesses
+it from a few thousand characters of text, and the voice is the one picked
+in Settings if it speaks that language, or else the best installed voice for
+it, from the user's region first. Reading stops when the book closes or
+another tab is shown.
 
 ## Positions that survive relayout
 

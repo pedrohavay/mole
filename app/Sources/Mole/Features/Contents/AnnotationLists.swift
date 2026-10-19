@@ -45,6 +45,7 @@ struct BookmarksList: View {
                     .font(.system(size: 11))
                     .foregroundStyle(here ? accent : Theme.tertiary)
                     .padding(.top, 2)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: Theme.Space.xxs) {
                     Text(bookmark.text.isEmpty ? L10n.text("bookmark.untitled") : bookmark.text)
                         .font(Theme.label)
@@ -64,6 +65,8 @@ struct BookmarksList: View {
             .hoverable(selected: here)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(here ? .isSelected : [])
+        .accessibilityAction(named: L10n.text("bookmark.delete")) { remove(bookmark) }
         .contextMenu {
             Button(role: .destructive) {
                 remove(bookmark)
@@ -102,6 +105,7 @@ struct NotesList: View {
                     .menuIndicator(.hidden)
                     .fixedSize()
                     .help(L10n.text("library.options"))
+                    .accessibilityLabel(L10n.text("library.options"))
                 }
             }
             if highlights.isEmpty {
@@ -153,6 +157,11 @@ struct NotesList: View {
             .hoverable()
         }
         .buttonStyle(.plain)
+        .accessibilityValue(HighlightColor.at(highlight.color).name)
+        .accessibilityAction(named: highlight.hasNote ? L10n.text("note.edit") : L10n.text("note.add")) {
+            editing = highlight
+        }
+        .accessibilityAction(named: L10n.text("highlight.remove")) { remove(highlight) }
         .popover(isPresented: Binding { editing?.id == highlight.id } set: { if !$0 { editing = nil } },
                  arrowEdge: .leading) {
             HighlightEditor(tab: tab, annotation: highlight) { editing = nil }

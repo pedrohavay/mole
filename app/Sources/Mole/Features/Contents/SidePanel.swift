@@ -20,6 +20,8 @@ struct SidePanel: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.sidebar)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(model.panelPage.title)
     }
 
     private var header: some View {
@@ -32,7 +34,7 @@ struct SidePanel: View {
             }
             Spacer()
             IconButton(symbol: "xmark", help: L10n.text("contents.hide"), size: 11) {
-                withAnimation(.easeInOut(duration: 0.2)) { model.showContents = false }
+                Motion.animate { model.showContents = false }
             }
         }
         .padding(.horizontal, Theme.Space.s)
@@ -74,7 +76,7 @@ struct ContentsList: View {
                     }
                     .onChange(of: current) { _, index in
                         guard let index else { return }
-                        withAnimation { proxy.scrollTo(index, anchor: .center) }
+                        Motion.animate(.default) { proxy.scrollTo(index, anchor: .center) }
                     }
                 }
             }
@@ -105,6 +107,7 @@ struct ContentsList: View {
             .hoverable(selected: current)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(chapter.title)
         .accessibilityValue(L10n.format("contents.page", chapter.page + 1))
         .accessibilityAddTraits(current ? .isSelected : [])
     }
@@ -120,6 +123,7 @@ struct PanelTitle<Trailing: View>: View {
             Text(title)
                 .font(Theme.font(13, .semibold))
                 .foregroundStyle(Theme.text)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             trailing
         }

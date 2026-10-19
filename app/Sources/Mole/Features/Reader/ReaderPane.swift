@@ -34,9 +34,6 @@ struct ReaderPane: View {
                         editing = HighlightEdit(annotation: annotation,
                                                 anchor: CGRect(x: point.x - 1, y: point.y - 1, width: 2, height: 2))
                     }
-                    .accessibilityElement()
-                    .accessibilityLabel(tab.book.title)
-                    .accessibilityValue(tab.pageText.isEmpty ? (tab.currentChapter?.title ?? "") : tab.pageText)
                     if tab.isBookmarked {
                         bookmarkRibbon(width: geometry.size.width)
                     }
@@ -131,6 +128,9 @@ struct ReaderCanvas: NSViewRepresentable {
         view.onCopy = { coordinator.model.copySelection() }
         view.onLookUp = { coordinator.lookUp(at: $0) }
         view.canCopy = { coordinator.tab?.selection != nil }
+        view.pageAccessibility.paragraphs = { coordinator.tab?.visibleParagraphs() ?? [] }
+        view.pageAccessibility.label = { coordinator.tab.map { "\($0.book.title), \($0.pageDescription)" } }
+        view.pageAccessibility.onTurn = { coordinator.tab?.turn($0) }
         return view
     }
 
