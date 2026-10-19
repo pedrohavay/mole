@@ -50,6 +50,19 @@ func (f Format) Extension(path string) string {
 	return extensions[f][0]
 }
 
+// FormatOf returns the format whose extensions include the extension of
+// name, and reports whether there is one. It reads nothing: Detect tells
+// what a file really is.
+func FormatOf(name string) (Format, bool) {
+	ext := strings.ToLower(filepath.Ext(name))
+	for _, f := range []Format{EPUB, MOBI, FB2, Text} {
+		if slices.Contains(extensions[f], ext) {
+			return f, true
+		}
+	}
+	return 0, false
+}
+
 var (
 	// ErrUnsupported is returned for a file that is not a book in a
 	// format Mole reads.

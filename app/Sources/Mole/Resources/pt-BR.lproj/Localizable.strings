@@ -76,6 +76,21 @@
 "import.failed.title" = "Alguns arquivos não foram adicionados";
 "import.failed.detail" = "Não foi possível ler: %@.";
 "import.drm.detail" = "Protegidos por DRM, que o Mole não consegue abrir: %@.";
+"import.panel.message" = "Escolha livros (EPUB, MOBI, FB2 ou texto) ou pastas de livros.";
+"import.folder.progress" = "Adicionando livros das pastas…";
+"import.folder.title" = "Adicionar os livros de “%@”";
+"import.folders.title" = "Adicionar os livros de %ld pastas";
+"import.folder.detail" = "O Mole adiciona todos os livros da pasta e das subpastas dela: arquivos EPUB, MOBI, PRC, FB2 e de texto.";
+"import.folder.collections" = "Criar coleções a partir das pastas";
+"import.folder.collections.note" = "Cada pasta com livros vira uma coleção com o nome dela.";
+"import.folder.sync" = "Manter esta pasta sincronizada";
+"import.folders.sync" = "Manter estas pastas sincronizadas";
+"import.folder.sync.note" = "O Mole adiciona os livros que aparecerem aqui depois e atualiza os que mudarem. Um livro cujo arquivo sair da pasta fica marcado, nunca é removido.";
+"import.folder.action" = "Adicionar Livros";
+"import.folder.none.title" = "Nenhum livro encontrado";
+"import.folder.none.detail" = "Não há arquivos EPUB, MOBI, PRC, FB2 ou de texto nas pastas que você escolheu.";
+"sync.failed" = "Alguns livros de “%@” não foram sincronizados";
+"folder.remove.failed" = "Não foi possível parar de sincronizar a pasta";
 
 /* Library */
 "library.add" = "Adicionar Livros…";
@@ -93,6 +108,29 @@
 "missing.title" = "O arquivo de “%@” sumiu";
 "missing.detail" = "Ele foi movido ou apagado de %@.";
 "missing.remove" = "Remover da Biblioteca";
+
+/* Collections */
+"sidebar.collections" = "Coleções";
+"sidebar.collections.empty" = "Clique em + para criar uma coleção.";
+"collections.add.help" = "Nova coleção (⌘N)";
+"collection.name" = "Nome";
+"collection.defaultName" = "Nova Coleção";
+"collection.defaultName.numbered" = "Nova Coleção %ld";
+"collection.rename" = "Renomear";
+"collection.delete" = "Apagar Coleção…";
+"collection.delete.title" = "Apagar a coleção “%@”?";
+"collection.delete.detail" = "Os livros dela continuam na biblioteca.";
+"collection.delete.action" = "Apagar";
+"collection.exists" = "Já existe uma coleção chamada “%@”";
+"collection.exists.detail" = "Escolha outro nome.";
+"collection.failed" = "Não foi possível alterar a coleção";
+"collection.folder.help" = "Criada a partir de %@";
+"collection.empty.title" = "Esta coleção está vazia";
+"collection.empty.message" = "Arraste capas até a coleção na barra lateral ou use Adicionar à Coleção no menu de um livro.";
+"book.addToCollection" = "Adicionar à Coleção";
+"book.removeFromCollection" = "Remover de “%@”";
+"book.missing" = "Fora da pasta";
+"book.missing.help" = "O arquivo saiu da pasta sincronizada. O Mole ainda tem a cópia dele; remova o livro se não quiser mais.";
 
 /* Shelves */
 "shelf.all" = "Todos os Livros";
@@ -165,6 +203,8 @@
 /* Search in a book */
 "search.prompt" = "Buscar neste livro";
 "search.selection" = "Buscar Seleção";
+"lookup.action" = "Pesquisar";
+"translate.action" = "Traduzir";
 "search.running" = "Buscando… %ld encontrados";
 "search.count.one" = "1 resultado";
 "search.count.other" = "%ld resultados";
@@ -175,6 +215,7 @@
 
 /* Menus */
 "menu.addBooks" = "Adicionar Livros…";
+"menu.newCollection" = "Nova Coleção";
 "menu.closeBook" = "Fechar Livro";
 "menu.go" = "Ir";
 "menu.nextTab" = "Próxima Aba";
@@ -193,6 +234,7 @@
 "menu.find" = "Buscar no Livro…";
 "menu.findNext" = "Buscar Próximo";
 "menu.findPrevious" = "Buscar Anterior";
+"menu.checkForUpdates" = "Buscar Atualizações…";
 
 /* Sidebar and tabs */
 "sidebar.show" = "Mostrar Barra Lateral";
@@ -201,13 +243,39 @@
 "sidebar.open.empty" = "Abra um livro na biblioteca.";
 "sidebar.recent" = "Recentes";
 "sidebar.recent.help" = "Um clique mostra o livro na biblioteca; dois cliques o abrem.";
+"sidebar.label" = "Barra lateral";
+"sidebar.lastRead" = "lido %@";
 "tab.library" = "Biblioteca";
 "tab.close" = "Fechar";
+"tabs.label" = "Abas";
 
 /* Status bar */
 "status.pages.single" = "%ld de %ld · %ld%%";
 "status.level" = "%ld%%";
 "status.pages.range" = "%ld–%ld de %ld · %ld%%";
+"time.left.chapter" = "%@ até o fim do capítulo";
+"time.left.book" = "%@ até o fim do livro";
+"status.label" = "Barra de status";
+
+/* A página, como o VoiceOver a lê */
+"reader.role" = "página";
+"reader.page" = "Página %ld de %ld";
+"reader.pages" = "Páginas %ld e %ld de %ld";
+"reader.nextPage" = "Próxima Página";
+"reader.previousPage" = "Página Anterior";
+
+/* Leitura em voz alta */
+"readAloud.start" = "Ler em Voz Alta";
+"readAloud.start.help" = "Ler em voz alta (⇧⌘R)";
+"readAloud.pause" = "Pausar Leitura em Voz Alta";
+"readAloud.resume" = "Retomar Leitura em Voz Alta";
+"readAloud.stop" = "Parar Leitura em Voz Alta";
+"readAloud.voice" = "Voz";
+"readAloud.voice.automatic" = "Automática";
+"readAloud.voice.enhanced" = "%@ (Melhorada)";
+"readAloud.voice.premium" = "%@ (Premium)";
+"readAloud.rate" = "Velocidade";
+"readAloud.note" = "A opção automática escolhe uma voz que fala o idioma do livro. Para adicionar vozes, vá em Ajustes do Sistema › Acessibilidade › Conteúdo Falado › Voz do Sistema › Gerenciar Vozes.";
 
 /* Settings */
 "settings.general" = "Geral";
@@ -219,9 +287,22 @@
 "settings.accent.note" = "Usada na seleção, na aba ativa e nos controles. A página nunca recebe a cor de destaque.";
 "settings.language" = "Idioma";
 "settings.language.note" = "O Mole segue o idioma definido em Ajustes do Sistema › Geral › Idioma e Região. Há inglês e português do Brasil.";
+"settings.updates" = "Atualizações";
+"settings.updates.automatic" = "Buscar atualizações automaticamente";
+"settings.updates.note" = "O Mole procura uma versão nova uma vez por dia e pergunta antes de instalá-la.";
+"settings.folders" = "Pastas sincronizadas";
+"settings.folders.empty" = "Nenhuma pasta está sincronizada. Escolha uma pasta em Arquivo › Adicionar Livros… e ative Manter esta pasta sincronizada.";
+"settings.folders.note" = "O Mole acompanha estas pastas e adiciona livros novos ou alterados. Um livro cujo arquivo sair da pasta fica marcado na biblioteca até você removê-lo.";
+"settings.folders.syncNow" = "Sincronizar Agora";
+"settings.folders.remove" = "Parar de Sincronizar";
+"settings.folders.remove.help" = "Parar de sincronizar esta pasta. Os livros dela continuam na biblioteca.";
+"settings.folders.synced" = "sincronizada %@";
+"settings.folders.notSynced" = "ainda não sincronizada";
+"settings.folders.collections" = "cria coleções";
 "settings.text" = "Texto";
 "settings.light" = "Luz";
 "settings.light.note" = "O brilho é uma fração do que a tela consegue mostrar acima do branco SDR neste momento. Sem EDR, as letras param no branco SDR.";
+"settings.readAloud" = "Leitura em voz alta";
 "settings.shortcuts.reading" = "Durante a leitura";
 "settings.shortcuts.window" = "Janela e abas";
 
@@ -236,12 +317,16 @@
 "shortcut.contents" = "Mostrar ou ocultar o sumário";
 "shortcut.fullScreen" = "Tela cheia";
 "shortcut.exitFullScreen" = "Sair da tela cheia";
+"shortcut.lookUp" = "Pesquisar a seleção, ou clique firme numa palavra";
 "shortcut.addBooks" = "Adicionar livros";
+"shortcut.newCollection" = "Nova coleção";
 "shortcut.closeBook" = "Fechar o livro";
 "shortcut.library" = "Biblioteca";
 "shortcut.tabs" = "Livros abertos, na ordem das abas";
 "shortcut.cycleTabs" = "Próxima aba ou aba anterior";
 "shortcut.sidebar" = "Mostrar ou ocultar a barra lateral";
+"shortcut.readAloud" = "Ler em voz alta, pausar ou retomar";
+"shortcut.stopReadAloud" = "Parar a leitura em voz alta";
 "shortcut.settings" = "Ajustes";
 
 /* Key names */

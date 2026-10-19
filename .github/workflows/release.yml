@@ -1,0 +1,136 @@
+# Release builds Mole from a version tag (v0.1.0), signs it with the
+# Developer ID certificate, notarizes it, and publishes it as a GitHub
+# release with its SHA-256 and the appcast that installed copies read to
+# update themselves. The tag must match VERSION in the Makefile. The README
+# (Making a release) lists the secrets and the variable it needs.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, notarize and publish
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      # The whole history, because the build number is the commit count.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check the tag, the secrets and the variable
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+        run: |
+          VERSION=$(sed -n 's/^VERSION ?= *//p' Makefile)
+          if [ "$GITHUB_REF_NAME" != "v$VERSION" ]; then
+            echo "::error::the tag $GITHUB_REF_NAME does not match VERSION $VERSION in the Makefile; bump VERSION, commit, and tag that commit v<VERSION>"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          missing=""
+          for name in DEVELOPER_ID_P12 DEVELOPER_ID_P12_PASSWORD NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER SPARKLE_PRIVATE_KEY SPARKLE_PUBLIC_KEY; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::not set:$missing (SPARKLE_PUBLIC_KEY is a repository variable, the others are secrets; see Making a release in the README)"
+            exit 1
+          fi
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: core/go.mod
+          cache-dependency-path: core/go.sum
+
+      # The same cache as ci.yml, which main fills.
+      - name: Cache the pinned MuPDF
+        uses: actions/cache@v4
+        with:
+          path: build/mupdf
+          key: mupdf-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-mupdf.sh') }}
+
+      # A keychain of its own, with a random password, holds the certificate
+      # for this run only; the last step deletes it. Apple's Developer ID
+      # intermediate certificate completes the chain codesign needs.
+      - name: Import the Developer ID certificate
+        env:
+          DEVELOPER_ID_P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          DEVELOPER_ID_P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/release.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          printf '%s' "$DEVELOPER_ID_P12" | base64 --decode > "$RUNNER_TEMP/developer-id.p12"
+          security import "$RUNNER_TEMP/developer-id.p12" -k "$KEYCHAIN" -f pkcs12 \
+            -P "$DEVELOPER_ID_P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/developer-id.p12"
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/"Developer ID Application: / { print $2; exit }')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::DEVELOPER_ID_P12 holds no valid Developer ID Application identity"
+            exit 1
+          fi
+          echo "SIGN_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Write the notarization and update keys
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          umask 077
+          printf '%s\n' "$NOTARY_KEY_P8" > "$RUNNER_TEMP/notary-key.p8"
+          printf '%s\n' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle-key"
+
+      - name: Build, sign and notarize
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+        run: >
+          make release DEVELOPER_DIR="$(xcode-select -p)"
+          SIGN_IDENTITY="$SIGN_IDENTITY"
+          NOTARY_KEY="$RUNNER_TEMP/notary-key.p8" NOTARY_KEY_ID="$NOTARY_KEY_ID" NOTARY_ISSUER="$NOTARY_ISSUER"
+          SPARKLE_PUBLIC_KEY="$SPARKLE_PUBLIC_KEY" SPARKLE_KEY_FILE="$RUNNER_TEMP/sparkle-key"
+
+      # The notes link the exact source of the release, as the AGPL asks;
+      # GitHub's notes for the changes since the last release follow them.
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ZIP="build/release/Mole-$VERSION.zip"
+          SOURCE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_REF_NAME"
+          NOTES="Mole $VERSION for macOS 14 or later on Apple silicon. Download Mole-$VERSION.zip, open it, and move Mole to the Applications folder. Copies already installed offer this version through Mole > Check for Updates.
+
+          Mole is free software under the GNU Affero General Public License, version 3 or later. This release is built from the tagged commit, whose source code is at $SOURCE and in the source code archives below.
+
+          SHA-256 of Mole-$VERSION.zip: \`$(cut -d ' ' -f 1 "$ZIP.sha256")\`"
+          gh release create "$GITHUB_REF_NAME" "$ZIP" "$ZIP.sha256" build/release/appcast.xml \
+            --verify-tag --latest --title "Mole $VERSION" --notes "$NOTES" --generate-notes
+
+      - name: Delete the keychain and the keys
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN:-}" ]; then security delete-keychain "$KEYCHAIN" || true; fi
+          rm -f "$RUNNER_TEMP/developer-id.p12" "$RUNNER_TEMP/notary-key.p8" "$RUNNER_TEMP/sparkle-key"

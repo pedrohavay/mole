@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Sidebar lists the shelves, the open books and the recently read ones.
+/// Sidebar lists the shelves, the collections, the open books and the
+/// recently read ones.
 @MainActor
 struct Sidebar: View {
     @Environment(AppModel.self) private var model
@@ -11,6 +12,7 @@ struct Sidebar: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 1) {
                     shelves
+                    CollectionsSection()
                     openBooks
                     recentBooks
                 }
@@ -21,6 +23,8 @@ struct Sidebar: View {
             footer
         }
         .background(Theme.sidebar)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L10n.text("sidebar.label"))
     }
 
     private var header: some View {
@@ -33,7 +37,7 @@ struct Sidebar: View {
                 .foregroundStyle(Theme.secondary)
             Spacer()
             IconButton(symbol: "sidebar.left", help: L10n.text("sidebar.hide")) {
-                withAnimation(.easeInOut(duration: 0.2)) { model.showSidebar = false }
+                Motion.animate { model.showSidebar = false }
             }
         }
         .padding(.horizontal, Theme.Space.s)
@@ -43,15 +47,17 @@ struct Sidebar: View {
 
     @ViewBuilder private var shelves: some View {
         ForEach(Shelf.allCases) { shelf in
-            let selected = model.pane == .library && model.shelf == shelf
+            let selected = model.pane == .library && model.collection == nil && model.shelf == shelf
+            let count = model.books.filter(shelf.keeps).count
             Button {
                 model.shelf = shelf
                 model.pane = .library
             } label: {
-                SidebarRow(symbol: shelf.symbol, title: shelf.title,
-                           meta: "\(model.books.filter(shelf.keeps).count)", selected: selected)
+                SidebarRow(symbol: shelf.symbol, title: shelf.title, meta: "\(count)", selected: selected)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(shelf.title)
+            .accessibilityValue(L10n.bookCount(count))
             .accessibilityAddTraits(selected ? .isSelected : [])
         }
     }
@@ -80,6 +86,10 @@ struct Sidebar: View {
                                    selected: active)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(tab.book.title)
+                    .accessibilityValue([tab.currentChapter?.title ?? tab.book.author,
+                                         L10n.format("book.percentRead", Int(tab.state.progress * 100))]
+                        .filter { !$0.isEmpty }.joined(separator: ", "))
                     .accessibilityAddTraits(active ? .isSelected : [])
                 }
             }
@@ -107,6 +117,11 @@ struct Sidebar: View {
                 .buttonStyle(.plain)
                 .simultaneousGesture(TapGesture(count: 2).onEnded { model.open(book) })
                 .help(L10n.text("sidebar.recent.help"))
+                .accessibilityLabel(book.title)
+                .accessibilityValue([book.author,
+                                     book.lastOpened.map { L10n.format("sidebar.lastRead", spokenAge($0)) } ?? ""]
+                    .filter { !$0.isEmpty }.joined(separator: ", "))
+                .accessibilityAction(named: L10n.text("action.open")) { model.open(book) }
             }
         }
     }

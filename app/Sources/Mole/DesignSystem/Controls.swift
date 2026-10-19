@@ -82,11 +82,13 @@ struct SearchField: View {
     var body: some View {
         HStack(spacing: Theme.Space.xs + 2) {
             Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(Theme.tertiary)
+                .accessibilityHidden(true)
             TextField(prompt, text: $text)
                 .textFieldStyle(.plain)
                 .font(Theme.label)
                 .foregroundStyle(Theme.text)
                 .focused($focused)
+                .accessibilityLabel(prompt)
                 .onExitCommand { text = ""; focused = false }
             if !text.isEmpty {
                 Button { text = "" } label: {

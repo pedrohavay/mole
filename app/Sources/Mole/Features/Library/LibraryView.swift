@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// LibraryView is the grid of covers of the selected shelf. It takes the
-/// keyboard: arrows move the selection, Return opens and Delete removes.
-/// Books dropped on it are added to the library.
+/// LibraryView is the grid of covers of the selected shelf or collection.
+/// It takes the keyboard: arrows move the selection, Return opens and
+/// Delete removes. Books and folders dropped on it are added to the
+/// library.
 @MainActor
 struct LibraryView: View {
     @Environment(AppModel.self) private var model
@@ -19,16 +20,18 @@ struct LibraryView: View {
         let books = model.shelfBooks
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: Theme.Space.m) {
-                Text(model.shelf.title)
+                Text(model.libraryTitle)
                     .font(Theme.heading)
                     .foregroundStyle(Theme.text)
+                    .accessibilityAddTraits(.isHeader)
                 Text(L10n.bookCount(books.count))
                     .font(Theme.label)
                     .foregroundStyle(Theme.tertiary)
-                if model.importing > 0 {
+                if model.importing > 0 || model.importingFolders > 0 {
                     HStack(spacing: Theme.Space.xs) {
                         ProgressView().controlSize(.small).scaleEffect(0.7).frame(width: 12, height: 12)
-                        Text(L10n.format("import.progress", model.importing))
+                        Text(model.importing > 0 ? L10n.format("import.progress", model.importing)
+                            : L10n.text("import.folder.progress"))
                     }
                     .font(Theme.label)
                     .foregroundStyle(Theme.secondary)
@@ -58,9 +61,10 @@ struct LibraryView: View {
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            let paths = urls.filter { $0.isFileURL && BookFiles.accepts($0.path) }.map(\.path)
-            guard !paths.isEmpty else { return false }
-            model.importBooks(paths)
+            let paths = urls.filter(\.isFileURL).map(\.path)
+            let (files, folders) = BookFiles.sort(paths)
+            guard !files.isEmpty || !folders.isEmpty else { return false }
+            model.add(paths)
             return true
         } isTargeted: { dropTargeted = $0 }
     }
@@ -105,12 +109,13 @@ struct LibraryView: View {
             }
             .onChange(of: model.selectedBook) { _, id in
                 guard let id else { return }
-                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id) }
+                Motion.animate(.easeOut(duration: 0.2)) { proxy.scrollTo(id) }
             }
         }
         .focusable()
         .focused($gridFocused)
         .focusEffectDisabled()
+        .accessibilityLabel(model.shelf.title)
         .onMoveCommand { direction in move(direction, in: books) }
         .onKeyPress(.return) {
             guard let book = selected(in: books) else { return .ignored }
@@ -164,6 +169,9 @@ struct LibraryView: View {
         } else if !model.query.trimmingCharacters(in: .whitespaces).isEmpty {
             EmptyState(symbol: "magnifyingglass", title: L10n.text("library.noResults.title"),
                        message: L10n.format("library.noResults.message", model.query))
+        } else if let collection = model.currentCollection {
+            EmptyState(symbol: collection.symbol, title: L10n.text("collection.empty.title"),
+                       message: L10n.text("collection.empty.message"))
         } else {
             EmptyState(symbol: model.shelf.symbol, title: L10n.text("shelf.empty.title"),
                        message: L10n.text("shelf.empty.\(model.shelf.rawValue)"))

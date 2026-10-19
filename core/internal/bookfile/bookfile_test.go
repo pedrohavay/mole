@@ -104,6 +104,26 @@ func TestExtension(t *testing.T) {
 	}
 }
 
+func TestFormatOf(t *testing.T) {
+	tests := []struct {
+		name   string
+		want   Format
+		wantOK bool
+	}{
+		{name: "/d/a.EPUB", want: EPUB, wantOK: true},
+		{name: "/d/a.prc", want: MOBI, wantOK: true},
+		{name: "/d/a.fb2", want: FB2, wantOK: true},
+		{name: "/d/a.text", want: Text, wantOK: true},
+		{name: "/d/a.pdf"},
+		{name: "/d/README"},
+	}
+	for _, tt := range tests {
+		if got, ok := FormatOf(tt.name); got != tt.want || ok != tt.wantOK {
+			t.Errorf("FormatOf(%q) = %v, %v; want %v, %v", tt.name, got, ok, tt.want, tt.wantOK)
+		}
+	}
+}
+
 func TestInspect(t *testing.T) {
 	cover := coverPNG(t)
 	gutenberg := "The Project Gutenberg eBook of Plain Words\r\n\r\nTitle: Plain Words\r\n\r\nAuthor: Ana Lima\r\n\r\nSome text.\r\n"

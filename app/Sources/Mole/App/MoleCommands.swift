@@ -16,6 +16,7 @@ struct MenuState: Equatable {
     var hasSelection = false
     var isBookmarked = false
     var hasHits = false
+    var readAloud = ReadAloud.State.idle
 
     @MainActor
     init(_ model: AppModel) {
@@ -30,6 +31,7 @@ struct MenuState: Equatable {
         hasSelection = model.activeTab?.selection != nil
         isBookmarked = model.activeTab?.isBookmarked ?? false
         hasHits = !(model.activeTab?.hits.isEmpty ?? true)
+        readAloud = model.readAloud.state
     }
 }
 
@@ -53,12 +55,21 @@ extension FocusedValues {
 /// reach the model through perform.
 struct MoleCommands: Commands {
     let model: AppModel?
+    let updater: Updater
     @FocusedValue(\.menuState) private var state
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            if updater.isEnabled {
+                CheckForUpdatesButton(updater: updater)
+            }
+        }
         CommandGroup(replacing: .newItem) {
             Button(L10n.text("menu.addBooks"), action: perform { $0.chooseBooks() })
                 .keyboardShortcut("o")
+                .disabled(model == nil)
+            Button(L10n.text("menu.newCollection"), action: perform { $0.createCollection() })
+                .keyboardShortcut("n")
                 .disabled(model == nil)
             Button(L10n.text("menu.closeBook"), action: perform { $0.closeActiveTab() })
                 .keyboardShortcut("w")
@@ -66,11 +77,11 @@ struct MoleCommands: Commands {
         }
         CommandGroup(replacing: .sidebar) {
             Button(state?.showSidebar == false ? L10n.text("sidebar.show") : L10n.text("sidebar.hide"),
-                   action: perform { model in withAnimation(.easeInOut(duration: 0.2)) { model.showSidebar.toggle() } })
+                   action: perform { model in Motion.animate { model.showSidebar.toggle() } })
                 .keyboardShortcut("s", modifiers: [.control, .command])
                 .disabled(state == nil)
             Button(state?.showContents == true ? L10n.text("contents.hide") : L10n.text("contents.show"),
-                   action: perform { model in withAnimation(.easeInOut(duration: 0.2)) { model.showContents.toggle() } })
+                   action: perform { model in Motion.animate { model.showContents.toggle() } })
                 .keyboardShortcut("c", modifiers: [.option, .command])
                 .disabled(state?.hasBook != true)
             Button(state?.isFullScreen == true ? L10n.text("menu.exitFullScreen") : L10n.text("menu.enterFullScreen"),
@@ -114,6 +125,18 @@ struct MoleCommands: Commands {
             Button(L10n.text("highlight.selection"), action: perform { $0.highlightSelection() })
                 .keyboardShortcut("h", modifiers: [.command, .shift])
                 .disabled(state?.hasSelection != true)
+            Button(L10n.text("lookup.action"), action: perform { $0.activeTab?.lookUpSelection() })
+                .keyboardShortcut("d", modifiers: [.control, .command])
+                .disabled(state?.hasSelection != true)
+            Button(L10n.text("translate.action"), action: perform { $0.activeTab?.translateSelection() })
+                .disabled(state?.hasSelection != true || !Self.canTranslate)
+            Divider()
+            Button(readAloudTitle, action: perform { $0.toggleReadAloud() })
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(state?.hasBook != true)
+            Button(L10n.text("readAloud.stop"), action: perform { $0.readAloud.stop() })
+                .keyboardShortcut(".")
+                .disabled((state?.readAloud ?? .idle) == .idle)
             Divider()
             ForEach(PanelPage.allCases) { page in
                 Button(page.title, action: perform { $0.showPanel(page) })
@@ -182,6 +205,21 @@ struct MoleCommands: Commands {
         }
     }
 
+    /// ReadAloudTitle names what the Read Aloud item does now.
+    private var readAloudTitle: String {
+        switch state?.readAloud ?? .idle {
+        case .idle: L10n.text("readAloud.start")
+        case .speaking: L10n.text("readAloud.pause")
+        case .paused: L10n.text("readAloud.resume")
+        }
+    }
+
+    /// CanTranslate reports whether this macOS has the Translation framework.
+    private static var canTranslate: Bool {
+        if #available(macOS 14.4, *) { return true }
+        return false
+    }
+
     /// Returns a menu action that runs body with the model.
     private func perform(_ body: @escaping @MainActor (AppModel) -> Void) -> () -> Void {
         { [model] in
@@ -189,5 +227,18 @@ struct MoleCommands: Commands {
                 if let model { body(model) }
             }
         }
+    }
+}
+
+/// CheckForUpdatesButton is the app menu's Check for Updates item. It is a
+/// view of its own because a view follows the updater's changes, which the
+/// menus do not.
+@MainActor
+private struct CheckForUpdatesButton: View {
+    let updater: Updater
+
+    var body: some View {
+        Button(L10n.text("menu.checkForUpdates")) { updater.checkForUpdates() }
+            .disabled(!updater.canCheck)
     }
 }

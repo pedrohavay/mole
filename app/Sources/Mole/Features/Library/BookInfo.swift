@@ -44,6 +44,12 @@ struct BookInfo: View {
                     }
                 }
                 .font(Theme.caption)
+                if book.missing {
+                    Label(L10n.text("book.missing.help"), systemImage: "exclamationmark.triangle.fill")
+                        .font(Theme.caption)
+                        .foregroundStyle(Theme.caution)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Text(book.originalPath ?? book.path)
                     .font(Theme.caption)
                     .foregroundStyle(Theme.tertiary)

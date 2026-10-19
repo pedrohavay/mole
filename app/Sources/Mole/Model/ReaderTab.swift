@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import NaturalLanguage
 import Observation
 
 /// PageMark is something painted under the text of the visible pages, in
@@ -9,10 +10,23 @@ struct PageMark: Equatable {
         case highlight(color: Int)
         case selection
         case hit(current: Bool)
+        /// Speech marks the sentence being read aloud.
+        case speech
     }
 
     var rect: CGRect
     var kind: Kind
+}
+
+/// PageParagraph is a paragraph on the visible pages, or the part of one on
+/// a page, with the boxes of its lines in view points from the top left.
+struct PageParagraph: Equatable {
+    let range: TextRange
+    let text: String
+    let lines: [CGRect]
+
+    /// Frame is the box around the lines.
+    var frame: CGRect { lines.dropFirst().reduce(lines.first ?? .zero) { $0.union($1) } }
 }
 
 /// ReaderTab is an open book: its session with the core, what the reader
@@ -29,10 +43,23 @@ final class ReaderTab: Identifiable {
     private(set) var revision = 0
     /// VisibleRange is the text on the visible pages.
     private(set) var visibleRange: TextRange?
-    /// Marks are the highlights, selection and search hits on screen.
+    /// Marks are the highlights, selection, search hits and the sentence
+    /// read aloud on screen.
     private(set) var marks: [PageMark] = []
-    /// PageText is the text on screen, kept only while VoiceOver runs.
-    private(set) var pageText = ""
+    /// Spoken is the sentence being read aloud, if any.
+    private(set) var spoken: TextRange?
+    /// Paragraphs caches the paragraphs of the visible pages for the
+    /// revision they were read at; they are read only when asked for.
+    @ObservationIgnored private var paragraphs: (revision: Int, list: [PageParagraph])?
+    @ObservationIgnored private var detectedLanguage: String??
+    /// TimeLeft estimates the reading time to the end of the chapter and of
+    /// the book, at the reader's pace; nil until a screen of text is known.
+    private(set) var timeLeft: TimeLeft?
+    @ObservationIgnored private var screenShownAt = Date()
+    /// ScreenCharacters is the text on the visible pages, in characters, when
+    /// it lies in one chapter; averageScreen smooths it over screens.
+    @ObservationIgnored private var screenCharacters: Int?
+    @ObservationIgnored private var averageScreen: Double?
 
     private(set) var annotations: [Annotation] = []
     /// Selection is the text the reader dragged over, if any.
@@ -40,6 +67,12 @@ final class ReaderTab: Identifiable {
     /// IsSelecting is set while the pointer drags out a selection.
     var isSelecting = false
     @ObservationIgnored private var selectionStart: Anchor?
+    /// TranslationText is the text the translation popover shows, while it
+    /// is open.
+    var translationText: String?
+    /// LookUpHandler shows the system dictionary for a text at its box in
+    /// the view; the reader canvas sets it.
+    @ObservationIgnored var lookUpHandler: ((String, CGRect) -> Void)?
 
     /// The search of the book, if one was asked for.
     private(set) var query = ""
@@ -70,7 +103,15 @@ final class ReaderTab: Identifiable {
     }
 
     func turn(_ screens: Int) {
-        if session.turn(screens) { refresh() }
+        // Reading one screen and moving on is how the reading pace is
+        // learned; jumps and turning back teach nothing.
+        let readFor = Date().timeIntervalSince(screenShownAt)
+        let characters = screenCharacters
+        guard session.turn(screens) else { return }
+        if screens == 1, let characters {
+            PaceStore.shared.record(characters: characters, seconds: readFor)
+        }
+        refresh()
     }
 
     func go(to page: Int) {
@@ -99,16 +140,88 @@ final class ReaderTab: Identifiable {
     private func refresh() {
         if let state = try? session.state() { self.state = state }
         visibleRange = try? session.visibleRange()
-        if NSWorkspace.shared.isVoiceOverEnabled, let visibleRange {
-            pageText = (try? session.text(of: visibleRange)) ?? ""
+        screenShownAt = Date()
+        screenCharacters = visibleRange.flatMap(Self.characters(in:))
+        if let screenCharacters, screenCharacters >= 200 {
+            averageScreen = averageScreen.map { $0 + 0.2 * (Double(screenCharacters) - $0) } ?? Double(screenCharacters)
         }
+        refreshTimeLeft()
         refreshMarks()
         revision += 1
+    }
+
+    /// Returns the characters in range when it lies in one chapter. Offsets
+    /// count non-whitespace characters, the unit of the reading pace.
+    private static func characters(in range: TextRange) -> Int? {
+        guard range.start.chapter == range.end.chapter else { return nil }
+        return range.end.offset - range.start.offset
+    }
+
+    /// Estimates the time left from the pages left and the average text on
+    /// a screen.
+    func refreshTimeLeft() {
+        guard let averageScreen, state.pages > 0 else {
+            timeLeft = nil
+            return
+        }
+        let pace = PaceStore.shared.pace
+        let perPage = averageScreen / Double(max(1, state.columns))
+        let pagesLeft = max(0, state.pages - state.lastVisible - 1)
+        let nextChapter = chapters.first { $0.level == 0 && $0.page > state.lastVisible }?.page
+        let chapterLeft = nextChapter.map { max(0, $0 - state.lastVisible - 1) }
+        timeLeft = TimeLeft(chapter: chapterLeft.map { pace.time(for: Int(Double($0) * perPage)) },
+                            book: pace.time(for: Int(Double(pagesLeft) * perPage)))
     }
 
     /// The top-level chapter that holds the first visible page.
     var currentChapter: Chapter? {
         chapters.last { $0.level == 0 && $0.page <= state.page }
+    }
+
+    /// PageDescription says which pages are shown and in which chapter, as
+    /// VoiceOver announces a new screen.
+    var pageDescription: String {
+        guard state.pages > 0 else { return book.title }
+        let pages = state.lastVisible > state.page
+            ? L10n.format("reader.pages", state.page + 1, state.lastVisible + 1, state.pages)
+            : L10n.format("reader.page", state.page + 1, state.pages)
+        guard let chapter = currentChapter?.title, !chapter.isEmpty else { return pages }
+        return "\(pages), \(chapter)"
+    }
+
+    /// Returns the paragraphs of the visible pages with their lines, in
+    /// reading order. They are read from the core the first time they are
+    /// asked for after the pages change.
+    func visibleParagraphs() -> [PageParagraph] {
+        if let paragraphs, paragraphs.revision == revision { return paragraphs.list }
+        var list: [PageParagraph] = []
+        if let visibleRange, let parts = try? session.paragraphs(of: visibleRange) {
+            for part in parts {
+                guard let lines = try? session.rects(of: part.range), !lines.isEmpty else { continue }
+                list.append(PageParagraph(range: part.range, text: part.text, lines: lines))
+            }
+        }
+        paragraphs = (revision, list)
+        return list
+    }
+
+    /// Language is the language of the book's text, as a BCP 47 code such as
+    /// "en" or "pt", guessed from a few pages of text from where the reader
+    /// first asked; nil when unclear. A single page, such as a copyright
+    /// page full of names, is too little to tell.
+    var language: String? {
+        if let detectedLanguage { return detectedLanguage }
+        guard let start = visibleRange?.start,
+              let ahead = try? session.paragraphs(of: TextRange(start: start, end: .endOfBook), limit: 4000)
+        else { return nil }
+        let text = ahead.map(\.text).joined(separator: "\n")
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        let language = recognizer.dominantLanguage.map(\.rawValue)
+        // Near the end of a short book there may be too little text; guess
+        // again later rather than keep a poor guess.
+        if text.count >= 1000 { detectedLanguage = .some(language) }
+        return language
     }
 
     // MARK: Marks
@@ -129,8 +242,16 @@ final class ReaderTab: Identifiable {
         for (index, hit) in hits.enumerated() where hit.range.overlaps(visible) {
             add(hit.range, .hit(current: index == currentHit))
         }
+        if let spoken { add(spoken, .speech) }
         if let selection { add(selection, .selection) }
         if marks != self.marks { self.marks = marks }
+    }
+
+    /// Marks range as the sentence being read aloud, or clears the mark.
+    func markSpoken(_ range: TextRange?) {
+        guard range != spoken else { return }
+        spoken = range
+        refreshMarks()
     }
 
     // MARK: Selection
@@ -157,6 +278,60 @@ final class ReaderTab: Identifiable {
         guard selection != nil else { return }
         selection = nil
         refreshMarks()
+    }
+
+    /// Selects the word under a point of the view, as a force click does,
+    /// and reports whether there was one. The core counts offsets in
+    /// non-whitespace characters, so the word is found in the text around
+    /// the point and its ends are counted back into offsets.
+    @discardableResult
+    func selectWord(at point: CGPoint) -> Bool {
+        guard let anchor = (try? session.anchor(at: point)) ?? nil else { return false }
+        let before = min(anchor.offset, 40)
+        let around = TextRange(start: Anchor(chapter: anchor.chapter, offset: anchor.offset - before),
+                               end: Anchor(chapter: anchor.chapter, offset: anchor.offset + 40))
+        guard let text = try? session.text(of: around),
+              let word = Self.word(in: text, atCharacter: before) else { return false }
+        let start = anchor.offset - before + word.lowerBound
+        selection = TextRange(start: Anchor(chapter: anchor.chapter, offset: start),
+                              end: Anchor(chapter: anchor.chapter, offset: anchor.offset - before + word.upperBound))
+        refreshMarks()
+        return true
+    }
+
+    /// Returns the word holding the character at index, counted in
+    /// non-whitespace characters of text, as a range of such counts.
+    static func word(in text: String, atCharacter index: Int) -> Range<Int>? {
+        let characters = text.filter { !$0.isWhitespace }.map { $0 }
+        // Positions of the non-whitespace characters, with the gaps between
+        // words, so a word ends at whitespace as well as at punctuation.
+        var gaps = Set<Int>()
+        var count = 0
+        for character in text {
+            if character.isWhitespace { gaps.insert(count) } else { count += 1 }
+        }
+        func isWord(_ i: Int) -> Bool {
+            let c = characters[i]
+            return c.isLetter || c.isNumber || c == "'" || c == "\u{2019}" || c == "-"
+        }
+        guard characters.indices.contains(index), isWord(index) else { return nil }
+        var low = index
+        while low > 0, !gaps.contains(low), isWord(low - 1) { low -= 1 }
+        var high = index + 1
+        while high < characters.count, !gaps.contains(high), isWord(high) { high += 1 }
+        return low..<high
+    }
+
+    /// Shows the system dictionary for the selection.
+    func lookUpSelection() {
+        guard let text = selectedText(), !text.isEmpty, let box = selectionRects().first else { return }
+        lookUpHandler?(text, box)
+    }
+
+    /// Opens the translation popover for the selection.
+    func translateSelection() {
+        guard let text = selectedText(), !text.isEmpty else { return }
+        translationText = text
     }
 
     /// Returns the selected text, or nil when nothing is selected.
