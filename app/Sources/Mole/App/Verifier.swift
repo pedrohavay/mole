@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// Verifier is a development aid, run with `--verify-dir dir`: it captures
 /// the library, checks that the title bar row takes clicks, opens the first
@@ -208,10 +209,30 @@ struct Verifier {
                     after(0.6) {
                         let open = window.contentView?.firstDescendant(of: PictureScrollView.self) != nil
                         report("after Esc: viewer open \(open), page has the keys \(window.firstResponder === view)")
-                        finish()
+                        capture("text-panel.png", view: TextPanel()) {
+                            capture("reading-settings.png", view: ReadingSettings().frame(width: 520)) { finish() }
+                        }
                     }
                 }
             }
+        }
+    }
+
+    /// Captures view into name, in a window of its own with the app's
+    /// environment, then goes on with next.
+    private func capture<Content: View>(_ name: String, view: Content, next: @escaping @MainActor () -> Void) {
+        let host = NSHostingView(rootView: view.environment(model).environment(\.accent, model.accent)
+            .preferredColorScheme(.dark))
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.titled],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.center()
+        window.orderFront(nil)
+        after(0.6) {
+            capture(name, window: window)
+            window.close()
+            next()
         }
     }
 

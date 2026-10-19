@@ -101,8 +101,9 @@ private struct GeneralSettings: View {
     }
 }
 
+/// ReadingSettings is the Reading tab: text, pictures and light.
 @MainActor
-private struct ReadingSettings: View {
+struct ReadingSettings: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
@@ -149,7 +150,7 @@ private struct ReadingSettings: View {
             }
         }
         .formStyle(.grouped)
-        .frame(height: 520)
+        .frame(height: 640)
     }
 }
 
