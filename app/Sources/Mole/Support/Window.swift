@@ -16,8 +16,9 @@ enum WindowChrome {
 
 /// TrafficLights keeps the window buttons centered in the top bar, which is
 /// taller than a standard title bar. AppKit lays the buttons out again on
-/// resizes and state changes, so they are moved back whenever their frame
-/// changes.
+/// resizes and state changes, sometimes only some of them, so they are moved
+/// back after each of those. The move waits for the end of the current
+/// layout pass: moving a button inside it is undone by the rest of the pass.
 ///
 /// A toolbar would make the title bar taller with no repositioning, but its
 /// view sits above the content and takes the clicks meant for the tabs.
@@ -25,6 +26,7 @@ enum WindowChrome {
 final class TrafficLights {
     private weak var window: NSWindow?
     private var observers: [NSObjectProtocol] = []
+    private var placeScheduled = false
     private static let kinds: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
     /// Inset is the distance from the window's left edge to the close button.
     private static let inset: CGFloat = 12
@@ -32,13 +34,19 @@ final class TrafficLights {
 
     init(window: NSWindow) {
         self.window = window
+        let center = NotificationCenter.default
         for kind in Self.kinds {
             guard let button = window.standardWindowButton(kind) else { continue }
             button.postsFrameChangedNotifications = true
-            observers.append(NotificationCenter.default.addObserver(
-                forName: NSView.frameDidChangeNotification, object: button, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.place() }
+            observers.append(center.addObserver(forName: NSView.frameDidChangeNotification, object: button,
+                                                queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.schedulePlace() }
+            })
+        }
+        for name in [NSWindow.didResizeNotification, NSWindow.didEndLiveResizeNotification,
+                     NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            observers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.schedulePlace() }
             })
         }
         place()
@@ -46,6 +54,19 @@ final class TrafficLights {
 
     deinit {
         observers.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    /// Places the buttons once the current layout pass is over; several
+    /// requests in one pass place them once.
+    func schedulePlace() {
+        guard !placeScheduled else { return }
+        placeScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                self?.placeScheduled = false
+                self?.place()
+            }
+        }
     }
 
     /// Moves the buttons to the center of the bar. In full screen the
@@ -106,7 +127,7 @@ struct WindowObserver: NSViewRepresentable {
                 observers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                     MainActor.assumeIsolated {
                         self?.onFullScreen(value)
-                        self?.trafficLights?.place()
+                        self?.trafficLights?.schedulePlace()
                     }
                 })
             }

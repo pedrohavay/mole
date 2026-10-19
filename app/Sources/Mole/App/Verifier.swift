@@ -29,6 +29,19 @@ struct Verifier {
         if let tab = model.activeTab {
             report("opened at page \(tab.state.page + 1) of \(tab.state.pages)")
         }
+        reportButtons("with a book open")
+        if let window = mainWindow {
+            window.setFrame(window.frame.insetBy(dx: 30, dy: 20), display: true)
+            after(0.3) { reportButtons("after a resize") }
+            after(0.6) {
+                window.zoom(nil)
+                after(0.5) {
+                    reportButtons("after zoom")
+                    window.zoom(nil)
+                    after(0.5) { reportButtons("after unzoom") }
+                }
+            }
+        }
         model.activeTab?.turn(10)
         after(0.8) {
             capture("reader.png")
@@ -118,16 +131,26 @@ struct Verifier {
     private func reportChrome() {
         guard let window = mainWindow, let frameView = window.contentView?.superview else { return }
         let height = window.frame.height
-        if let close = window.standardWindowButton(.closeButton), let superview = close.superview {
-            let frame = superview.convert(close.frame, to: nil)
-            report("traffic lights center \(decimal(height - frame.midY, 1)) pt from the top")
-        }
+        reportButtons("at launch")
         report("title bar \(decimal(height - window.contentLayoutRect.maxY, 1)) pt")
         for y in [6.0, Theme.Size.bar / 2, Theme.Size.bar - 4] {
             let point = NSPoint(x: (model.showSidebar ? 252 : 120) + 40, y: height - y)
             let hit = frameView.hitTest(frameView.convert(point, from: nil))
             report("click \(decimal(y, 0)) pt down the tab strip goes to \(hit.map { String(describing: type(of: $0)) } ?? "nothing")")
         }
+    }
+
+    /// Reports where each window button is, from the top left of the window,
+    /// and which view holds it; all three should share a center line.
+    private func reportButtons(_ moment: String) {
+        guard let window = mainWindow else { return }
+        let height = window.frame.height
+        let lines: [String] = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].compactMap { kind in
+            guard let button = window.standardWindowButton(kind), let superview = button.superview else { return nil }
+            let frame = superview.convert(button.frame, to: nil)
+            return "\(decimal(frame.midX, 1)),\(decimal(height - frame.midY, 1)) in \(type(of: superview))"
+        }
+        report("buttons \(moment): \(lines.joined(separator: " | "))")
     }
 
     /// Reports the menu bar, to check its language and key equivalents.
