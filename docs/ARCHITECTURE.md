@@ -44,6 +44,39 @@ macOS of the machine that built it and change with every upgrade.
 and memory rules, `Library` and `Session` are the handle classes, and a
 `Session` closes (saving the position) when it is released.
 
+## Collections and synced folders
+
+Collections live in two tables, `collections` and `collection_books`, so a
+book can be in any number of them; the book list carries the ids of the
+collections that hold each book, and the app filters the grid with them. A
+collection made from a folder remembers the folder's path, so a book added
+to that folder later finds its collection even after the user renames it.
+
+The library knows a book's original file by its path, its size and its
+modification time. Importing a known path whose size or time changed
+replaces the library's copy and the book's metadata but keeps its id, place,
+annotations and collections. A file at an unknown path whose size and time
+match a book whose original is gone is that book, renamed or moved. Paths
+are stored with symbolic links resolved, the way FSEvents reports them, so
+`/tmp/a.epub` and `/private/tmp/a.epub` are one file.
+
+`importer.ImportFolder` walks a folder, skipping hidden files and the
+library's own `Books` folder, imports each EPUB and, when asked, puts it in
+the collection of its folder. A watched folder is stored in
+`watched_folders`; `importer.Sync` imports what is new or changed in it and
+marks the books whose file is gone (`books.missing`) instead of removing
+them. Collections are only filled with books a sync touched, so a book the
+user took out of a collection stays out. A folder that is not there, such as
+an unplugged disk, is not synced at all.
+
+In the app, `FolderWatcher` follows the watched folders with FSEvents and
+waits for a second and a half of quiet before it reports a change, since a
+copy writes a file many times. It ignores the library's own folder, so the
+database's writes do not trigger syncs of a folder that holds it. Folder
+imports and syncs run on the `Importer` queue, like file imports; every
+watched folder is synced once at launch to catch changes made while Mole was
+closed.
+
 ## Light: how the text glows
 
 The reader view is backed by a `CAMetalLayer` in `rgba16Float` with
