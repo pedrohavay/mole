@@ -158,8 +158,10 @@ func (p pass) run() (FolderResult, error) {
 			r.Updated = append(r.Updated, got.book.ID)
 		}
 		if p.collections && (p.everyBook || got.change != unchanged) {
+			// The book is in the library either way; a collection that
+			// cannot be made is reported with its file.
 			if err := p.collect(got, file); err != nil {
-				return FolderResult{}, err
+				r.Failed = append(r.Failed, Failure{Path: file, Err: err})
 			}
 		}
 	}

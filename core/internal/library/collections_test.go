@@ -150,6 +150,9 @@ func TestMakeCollectionOfFolder(t *testing.T) {
 	if got, err := s.CollectionOfFolder("/books/poems"); err != nil || got.ID != mine.ID {
 		t.Errorf("CollectionOfFolder = %+v, %v; want collection %d", got, err, mine.ID)
 	}
+	if got, err := s.MakeCollectionOfFolder("/books/  ", now); err != nil || got.Name != "/books/" {
+		t.Errorf("MakeCollectionOfFolder of a blank name = %+v, %v; want the collection named after the path", got, err)
+	}
 	if _, err := s.CollectionOfFolder("/elsewhere"); !errors.Is(err, ErrCollectionNotFound) {
 		t.Errorf("CollectionOfFolder of an unknown folder: error %v, want ErrCollectionNotFound", err)
 	}

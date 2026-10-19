@@ -165,7 +165,10 @@ func (s *Store) MakeCollectionOfFolder(dir string, now time.Time) (Collection, e
 	}
 	name, err := collectionName(filepath.Base(dir))
 	if err != nil {
-		return Collection{}, err
+		// A folder named with spaces only goes by its whole path.
+		if name, err = collectionName(dir); err != nil {
+			return Collection{}, err
+		}
 	}
 	c, err = scanCollection(s.db.QueryRow(`SELECT id, name, folder, created_at FROM collections WHERE name = ?`, name))
 	switch {
