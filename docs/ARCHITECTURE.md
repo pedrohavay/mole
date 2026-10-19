@@ -151,7 +151,9 @@ keep their colors, and hidden pictures leave drawings out. A page whose
 paper is dark, as a slide's can be, already suits a black page, so its
 drawings keep their colors. A scanned page is one image, which the night
 mode inverts like any picture of light paper; its text, if it has an
-invisible OCR layer, can still be searched and selected.
+invisible OCR layer, can still be searched and selected. A scan stored as a
+stencil (a one-bit image mask painted in one color) is drawn like a glyph,
+so its words glow as text.
 
 ## Collections and synced folders
 
