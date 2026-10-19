@@ -98,7 +98,7 @@ final class Launch {
     }
 }
 
-/// AppDelegate receives the EPUB files opened from Finder and makes a bare
+/// AppDelegate receives the books opened from Finder and makes a bare
 /// executable (swift run) behave like a bundled app.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// OpenFiles handles files opened from Finder. Files that arrive before

@@ -34,16 +34,20 @@ cp "$ROOT/THIRD_PARTY_NOTICES" "$APP/Contents/Resources/THIRD_PARTY_NOTICES.txt"
 
 # The main bundle must list its languages too, or AppKit shows the system
 # menus (Edit, Window, Help) in English whatever the user's language.
-# InfoPlist.strings also translates the document type name Finder shows.
+# InfoPlist.strings also translates the names of the document types and of
+# the types Mole declares, which Finder shows.
 LOCALIZATIONS=""
 for language in $LANGUAGES; do
 	case $language in
-	pt-BR) EPUB_NAME="Livro EPUB" ;;
-	*) EPUB_NAME="EPUB Book" ;;
+	pt-BR) EPUB_NAME="Livro EPUB" MOBI_NAME="Livro MOBI" FB2_NAME="Livro FB2" TEXT_NAME="Texto simples" ;;
+	*) EPUB_NAME="EPUB Book" MOBI_NAME="MOBI Book" FB2_NAME="FB2 Book" TEXT_NAME="Plain Text" ;;
 	esac
 	mkdir -p "$APP/Contents/Resources/$language.lproj"
-	printf '"CFBundleName" = "Mole";\n"EPUB Book" = "%s";\n' "$EPUB_NAME" \
-		> "$APP/Contents/Resources/$language.lproj/InfoPlist.strings"
+	{
+		printf '"CFBundleName" = "Mole";\n'
+		printf '"EPUB Book" = "%s";\n"MOBI Book" = "%s";\n' "$EPUB_NAME" "$MOBI_NAME"
+		printf '"FB2 Book" = "%s";\n"Plain Text" = "%s";\n' "$FB2_NAME" "$TEXT_NAME"
+	} > "$APP/Contents/Resources/$language.lproj/InfoPlist.strings"
 	# The About panel shows Credits.rtf in the user's language.
 	cp "$ROOT/assets/credits/$language.rtf" "$APP/Contents/Resources/$language.lproj/Credits.rtf"
 	LOCALIZATIONS="$LOCALIZATIONS		<string>$language</string>
@@ -93,6 +97,95 @@ $LOCALIZATIONS	</array>
 			<array>
 				<string>org.idpf.epub-container</string>
 			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>MOBI Book</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.mobipocket.mobi</string>
+				<!-- The Kindle app exports this type for .mobi and .prc, and it
+				     wins over Mole's declaration where Kindle is installed. -->
+				<string>com.amazon.kindle-document</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>FB2 Book</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.fictionbook.fb2</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Plain Text</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.plain-text</string>
+			</array>
+		</dict>
+	</array>
+	<!-- macOS knows no type for MOBI, PRC or FB2 files. Imported
+	     declarations name them unless another app exports its own. -->
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.mobipocket.mobi</string>
+			<key>UTTypeDescription</key>
+			<string>MOBI Book</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mobi</string>
+					<string>prc</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/x-mobipocket-ebook</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.fictionbook.fb2</string>
+			<key>UTTypeDescription</key>
+			<string>FB2 Book</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.xml</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>fb2</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/x-fictionbook+xml</string>
+				</array>
+			</dict>
 		</dict>
 	</array>
 	<key>LSApplicationCategoryType</key>

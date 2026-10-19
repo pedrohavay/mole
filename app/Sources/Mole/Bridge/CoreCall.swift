@@ -3,8 +3,22 @@ import MoleCore
 
 /// CoreError is a failure reported by the Go core.
 struct CoreError: LocalizedError {
+    /// Kind is what went wrong, for the failures the app explains in the
+    /// user's language (mole_last_error_kind).
+    enum Kind: Int32 {
+        case other = 0
+        case drm = 1
+    }
+
     let message: String
-    var errorDescription: String? { message }
+    var kind = Kind.other
+
+    var errorDescription: String? {
+        switch kind {
+        case .drm: L10n.text("error.book.drm")
+        case .other: message
+        }
+    }
 }
 
 /// CoreCall holds the conventions of the Go core's C API (core/cmd/molecore):
@@ -16,7 +30,7 @@ enum CoreCall {
     static func lastError() -> CoreError {
         guard let message = mole_last_error() else { return CoreError(message: L10n.text("error.core.unknown")) }
         defer { mole_free(message) }
-        return CoreError(message: String(cString: message))
+        return CoreError(message: String(cString: message), kind: CoreError.Kind(rawValue: mole_last_error_kind()) ?? .other)
     }
 
     /// Takes ownership of a string returned by the core.

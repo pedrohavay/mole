@@ -1,7 +1,6 @@
 import AppKit
 import Observation
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// Pane is what the main area shows.
 enum Pane: Hashable {
@@ -176,14 +175,14 @@ final class AppModel {
     func chooseBooks() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [UTType.epub]
+        panel.allowedContentTypes = BookFiles.contentTypes
         panel.prompt = L10n.text("import.prompt")
         guard panel.runModal() == .OK else { return }
         importBooks(panel.urls.map(\.path))
     }
 
-    /// Adds the EPUB files at paths in the background; done runs on the
-    /// main thread with the ids of the books added, once they are listed.
+    /// Adds the books at paths in the background; done runs on the main
+    /// thread with the ids of the books added, once they are listed.
     func importBooks(_ paths: [String], done: @escaping @MainActor ([Int64]) -> Void = { _ in }) {
         guard !paths.isEmpty else { return }
         importing += paths.count
@@ -191,16 +190,22 @@ final class AppModel {
             let result = await importer.add(paths)
             importing -= paths.count
             reload()
+            var problems: [String] = []
             if !result.failed.isEmpty {
-                alert(L10n.text("import.failed.title"),
-                      L10n.format("import.failed.detail", result.failed.joined(separator: ", ")))
+                problems.append(L10n.format("import.failed.detail", result.failed.joined(separator: ", ")))
+            }
+            if !result.protected.isEmpty {
+                problems.append(L10n.format("import.drm.detail", result.protected.joined(separator: ", ")))
+            }
+            if !problems.isEmpty {
+                alert(L10n.text("import.failed.title"), problems.joined(separator: "\n"))
             }
             done(result.added)
         }
     }
 
-    /// Adds the EPUB files at paths, as opened from Finder, and opens the
-    /// first one.
+    /// Adds the books at paths, as opened from Finder, and opens the first
+    /// one.
     func openFiles(_ paths: [String]) {
         importBooks(paths) { [weak self] added in
             guard let self, let id = added.first, let book = self.books.first(where: { $0.id == id }) else { return }
@@ -441,10 +446,12 @@ final class AppModel {
 /// Importer adds books to the library on a background queue. Imports run
 /// one at a time on a library handle used by nothing else.
 final class Importer: @unchecked Sendable {
-    /// Result lists the books added and the names of the files that failed.
+    /// Result lists the books added and the names of the files that failed:
+    /// those protected by DRM apart from the rest.
     struct Result: Sendable {
         var added: [Int64] = []
         var failed: [String] = []
+        var protected: [String] = []
     }
 
     private let path: String
@@ -476,6 +483,8 @@ final class Importer: @unchecked Sendable {
         for path in paths {
             do {
                 result.added.append(try library.importBook(at: path))
+            } catch let error as CoreError where error.kind == .drm {
+                result.protected.append((path as NSString).lastPathComponent)
             } catch {
                 result.failed.append((path as NSString).lastPathComponent)
                 NSLog("Mole: cannot import %@: %@", path, error.localizedDescription)
@@ -483,11 +492,6 @@ final class Importer: @unchecked Sendable {
         }
         return result
     }
-}
-
-extension UTType {
-    /// EPUB is the type of .epub files, declared by the system.
-    static let epub = UTType("org.idpf.epub-container") ?? UTType(filenameExtension: "epub") ?? .data
 }
 
 extension Comparable {

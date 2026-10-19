@@ -57,6 +57,7 @@
 "edr.idle" = "EDR em espera";
 
 /* Errors */
+"error.book.drm" = "Este livro é protegido por DRM.";
 "error.core.unknown" = "Erro desconhecido no núcleo de leitura.";
 "error.library.title" = "Não foi possível abrir a biblioteca";
 "error.library.notOpened" = "A biblioteca não foi aberta.";
@@ -74,12 +75,13 @@
 "import.progress" = "Adicionando %ld…";
 "import.failed.title" = "Alguns arquivos não foram adicionados";
 "import.failed.detail" = "Não foi possível ler: %@.";
+"import.drm.detail" = "Protegidos por DRM, que o Mole não consegue abrir: %@.";
 
 /* Library */
 "library.add" = "Adicionar Livros…";
 "library.add.help" = "Adicionar livros (⌘O)";
 "library.empty.title" = "Sua estante está vazia";
-"library.empty.message" = "Adicione livros EPUB para começar a ler. Só as letras acendem; o resto da tela fica escuro.";
+"library.empty.message" = "Adicione livros EPUB, MOBI, FB2 ou de texto para começar a ler. Só as letras acendem; o resto da tela fica escuro.";
 "library.noResults.title" = "Nenhum resultado";
 "library.noResults.message" = "Nenhum livro corresponde a “%@”.";
 "library.options" = "Opções";
@@ -98,7 +100,7 @@
 "shelf.unread" = "Não Iniciados";
 "shelf.finished" = "Concluídos";
 "shelf.empty.title" = "Nada aqui ainda";
-"shelf.empty.all" = "Adicione livros EPUB para começar a ler.";
+"shelf.empty.all" = "Adicione livros EPUB, MOBI, FB2 ou de texto para começar a ler.";
 "shelf.empty.reading" = "Os livros que você começar aparecem aqui até você terminá-los.";
 "shelf.empty.unread" = "Os livros que você ainda não abriu aparecem aqui.";
 "shelf.empty.finished" = "Os livros que você ler até o fim aparecem aqui.";

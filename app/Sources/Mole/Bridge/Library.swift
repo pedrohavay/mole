@@ -30,8 +30,9 @@ final class Library: @unchecked Sendable {
         return Data(bytes: bytes, count: Int(length))
     }
 
-    /// Adds the EPUB at path and returns its book id. Adding a file that is
-    /// already in the library returns the existing book unchanged.
+    /// Adds the book at path and returns its book id. Adding a file that is
+    /// already in the library returns the existing book unchanged. A book
+    /// protected by DRM fails with a CoreError of kind drm.
     @discardableResult
     func importBook(at path: String) throws -> Int64 {
         let id = CoreCall.withCString(path) { mole_library_import(handle, $0) }

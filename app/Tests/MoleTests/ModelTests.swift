@@ -26,6 +26,12 @@ final class LaunchArgumentsTests: XCTestCase {
         XCTAssertEqual(parsed, LaunchArguments(books: ["/a/One.EPUB", "/b/two.epub"], verifyDirectory: "/tmp/out"))
     }
 
+    func testParseFormats() {
+        let parsed = LaunchArguments.parse(["Mole", "/a/b.mobi", "/a/c.PRC", "/a/d.fb2", "/a/e.txt", "/a/f.text",
+                                            "/a/g.pdf", "/a/h.azw", "/a/notes"])
+        XCTAssertEqual(parsed.books, ["/a/b.mobi", "/a/c.PRC", "/a/d.fb2", "/a/e.txt", "/a/f.text"])
+    }
+
     func testSmokeTest() {
         XCTAssertTrue(LaunchArguments.parse(["Mole", "--smoke-test"]).smokeTest)
         XCTAssertFalse(LaunchArguments.parse(["Mole"]).smokeTest)

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// LibraryView is the grid of covers of the selected shelf. It takes the
 /// keyboard: arrows move the selection, Return opens and Delete removes.
-/// EPUB files dropped on it are added to the library.
+/// Books dropped on it are added to the library.
 @MainActor
 struct LibraryView: View {
     @Environment(AppModel.self) private var model
@@ -58,7 +58,7 @@ struct LibraryView: View {
             }
         }
         .dropDestination(for: URL.self) { urls, _ in
-            let paths = urls.filter { $0.isFileURL && $0.pathExtension.lowercased() == "epub" }.map(\.path)
+            let paths = urls.filter { $0.isFileURL && BookFiles.accepts($0.path) }.map(\.path)
             guard !paths.isEmpty else { return false }
             model.importBooks(paths)
             return true
