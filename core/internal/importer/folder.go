@@ -242,7 +242,8 @@ func (p pass) collect(got imported, file string) error {
 	if errors.Is(err, library.ErrCollectionNotFound) {
 		return nil
 	}
-	if err != nil {
+	if err != nil || old.ID == c.ID {
+		// Folders with the same name share a collection; the book stays.
 		return err
 	}
 	return p.store.RemoveFromCollection(old.ID, got.book.ID)

@@ -172,6 +172,51 @@ func TestReplace(t *testing.T) {
 	if _, err := s.Replace(999, Book{Path: "/x"}); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Replace of a missing book: error %v, want ErrNotFound", err)
 	}
+
+	// A previous copy that cannot be deleted does not undo the replacement,
+	// and a failed replacement deletes the new copy, never the current one.
+	stuck := filepath.Join(s.BooksDir(), "stuck")
+	if err := os.MkdirAll(filepath.Join(stuck, "inside"), 0o755); err != nil {
+		t.Fatalf("MkdirAll error: %v", err)
+	}
+	b, _ := s.Add(Book{Path: stuck, OriginalPath: "/books/b.epub", Title: "B"}, now)
+	third := filepath.Join(s.BooksDir(), "b-3.epub")
+	os.WriteFile(third, []byte("epub"), 0o644)
+	if got, err := s.Replace(b.ID, Book{Path: third, OriginalPath: "/books/b.epub", Title: "B", Source: st}); err != nil || got.Path != third {
+		t.Errorf("Replace with an old copy that cannot be deleted = %q, %v; want the new copy", got.Path, err)
+	}
+	orphan := filepath.Join(s.BooksDir(), "b-4.epub")
+	os.WriteFile(orphan, []byte("epub"), 0o644)
+	if _, err := s.Replace(999, Book{Path: orphan}); err == nil {
+		t.Error("Replace of a missing book: got nil error")
+	}
+	if _, err := os.Stat(orphan); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a failed Replace left its new copy: %v", err)
+	}
+	if _, err := os.Stat(third); err != nil {
+		t.Errorf("a failed Replace of another book touched this book's copy: %v", err)
+	}
+}
+
+func TestSetSourceMovesOldBooks(t *testing.T) {
+	// A book imported before copies were kept reads its original file.
+	s := openTestStore(t)
+	now := time.Unix(1_700_000_000, 0)
+	old, _ := s.Add(Book{Path: "/books/old.epub", Title: "Old"}, now)
+	copied, _ := s.Add(Book{Path: "/lib/Books/c.epub", OriginalPath: "/books/c.epub", Title: "Copied"}, now)
+	st := Stamp{Size: 1, ModTime: now}
+	for _, id := range []int64{old.ID, copied.ID} {
+		b, _ := s.Book(id)
+		if err := s.SetSource(id, "/moved/"+filepath.Base(b.OriginalPath), st); err != nil {
+			t.Fatalf("SetSource error: %v", err)
+		}
+	}
+	if b, _ := s.Book(old.ID); b.Path != "/moved/old.epub" || b.OriginalPath != "/moved/old.epub" {
+		t.Errorf("old book after a move reads %q from %q, want both /moved/old.epub", b.Path, b.OriginalPath)
+	}
+	if b, _ := s.Book(copied.ID); b.Path != "/lib/Books/c.epub" || b.OriginalPath != "/moved/c.epub" {
+		t.Errorf("copied book after a move reads %q from %q, want its copy from /moved/c.epub", b.Path, b.OriginalPath)
+	}
 }
 
 func TestWithin(t *testing.T) {

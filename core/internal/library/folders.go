@@ -137,11 +137,15 @@ func (s *Store) BooksBySource(st Stamp) ([]Book, error) {
 }
 
 // SetSource records that the original file of a book is at path with the
-// stamp st, as when it was renamed or moved, and clears its missing mark.
+// stamp st, as when it was renamed or moved, and clears its missing mark. A
+// book imported before the library kept copies reads its original, so its
+// Path follows too.
 func (s *Store) SetSource(id int64, path string, st Stamp) error {
 	size, modTime := st.columns()
-	res, err := s.db.Exec(`UPDATE books SET original_path = ?, source_size = ?, source_mtime = ?, missing = 0 WHERE id = ?`,
-		path, size, modTime, id)
+	res, err := s.db.Exec(`
+		UPDATE books SET path = CASE WHEN path = original_path THEN ? ELSE path END,
+			original_path = ?, source_size = ?, source_mtime = ?, missing = 0
+		WHERE id = ?`, path, path, size, modTime, id)
 	if err != nil {
 		return fmt.Errorf("record the source of book %d: %w", id, err)
 	}
@@ -169,27 +173,33 @@ func (s *Store) SetMissing(id int64, missing bool) error {
 // title, author and cover read from it. The book keeps its ID, place,
 // annotations and collections, loses its missing mark, and the library's
 // previous copy is deleted.
+//
+// When the book cannot be updated it stays as it was, and the new copy is
+// deleted if it is inside the Books directory. Once the book points at the
+// new copy, nothing deletes that copy; a previous copy that cannot be
+// deleted is left behind.
 func (s *Store) Replace(id int64, b Book) (Book, error) {
 	var old string
 	err := s.db.QueryRow(`SELECT path FROM books WHERE id = ?`, id).Scan(&old)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Book{}, ErrNotFound
+	if err == nil {
+		size, modTime := b.Source.columns()
+		_, err = s.db.Exec(`
+			UPDATE books SET path = ?, original_path = ?, title = ?, author = ?, cover = ?,
+				source_size = ?, source_mtime = ?, missing = 0
+			WHERE id = ?`, b.Path, b.OriginalPath, b.Title, b.Author, b.Cover, size, modTime, id)
 	}
 	if err != nil {
-		return Book{}, fmt.Errorf("replace book %d: %w", id, err)
-	}
-	size, modTime := b.Source.columns()
-	_, err = s.db.Exec(`
-		UPDATE books SET path = ?, original_path = ?, title = ?, author = ?, cover = ?,
-			source_size = ?, source_mtime = ?, missing = 0
-		WHERE id = ?`, b.Path, b.OriginalPath, b.Title, b.Author, b.Cover, size, modTime, id)
-	if err != nil {
+		if s.owns(b.Path) {
+			os.Remove(b.Path)
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			return Book{}, ErrNotFound
+		}
 		return Book{}, fmt.Errorf("replace book %d: %w", id, err)
 	}
 	if old != b.Path && s.owns(old) {
-		if err := os.Remove(old); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return Book{}, fmt.Errorf("remove the old copy of book %d: %w", id, err)
-		}
+		// A copy left behind wastes space but breaks nothing.
+		os.Remove(old)
 	}
 	return s.Book(id)
 }

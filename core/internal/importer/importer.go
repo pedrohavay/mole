@@ -128,9 +128,9 @@ func refresh(store *library.Store, book library.Book, st library.Stamp) (importe
 	if err != nil {
 		return imported{}, err
 	}
+	// Replace deletes the new copy itself if the book was not updated.
 	b, err := store.Replace(book.ID, read)
 	if err != nil {
-		os.Remove(read.Path)
 		return imported{}, err
 	}
 	return imported{book: b, change: replaced}, nil

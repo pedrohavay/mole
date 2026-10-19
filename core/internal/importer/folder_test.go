@@ -323,3 +323,26 @@ func TestImportFolderAfterImportThroughALink(t *testing.T) {
 		t.Errorf("ImportFolder = %+v, %v; want the book found and nothing added", r, err)
 	}
 }
+
+func TestSyncMovesBetweenFoldersOfOneName(t *testing.T) {
+	// Folders with the same name share a collection; a book moved from one
+	// to the other stays in it.
+	store := openStore(t)
+	root := t.TempDir()
+	from := writeBook(t, filepath.Join(root, "2023", "Reading"), "a.epub", "A")
+	writeBook(t, filepath.Join(root, "2024", "Reading"), "b.epub", "B")
+	r, err := ImportFolder(store, root, FolderOptions{Collections: true, Watch: true}, time.Unix(1, 0))
+	if err != nil {
+		t.Fatalf("ImportFolder error: %v", err)
+	}
+	if err := os.Rename(from, filepath.Join(root, "2024", "Reading", "a.epub")); err != nil {
+		t.Fatalf("Rename error: %v", err)
+	}
+	if _, err := Sync(store, r.Folder, time.Unix(2, 0)); err != nil {
+		t.Fatalf("Sync error: %v", err)
+	}
+	want := map[string][]string{"Reading": {"A", "B"}}
+	if got := collectionsByName(t, store); !reflect.DeepEqual(got, want) {
+		t.Errorf("collections after a move between folders of one name = %v, want %v", got, want)
+	}
+}
