@@ -44,7 +44,7 @@ func openColorsAt(t *testing.T, scale float64) *Session {
 		t.Fatalf("Open error: %v", err)
 	}
 	t.Cleanup(s.Close)
-	if err := s.Layout(NewGeometry(600, 700, 0, scale, 14, SpreadSingle), 14); err != nil {
+	if err := s.Layout(NewGeometry(600, 700, 0, scale, 14, SpreadSingle, MarginsNormal), 14); err != nil {
 		t.Fatalf("Layout error: %v", err)
 	}
 	return s

@@ -14,18 +14,6 @@ import (
 	"mole/core/internal/mupdf"
 )
 
-// userCSS keeps the book's own styles and only overrides what hurts on an
-// EDR page: justification, because MuPDF does not hyphenate, and the fonts.
-// Code keeps a monospaced font so that listings stay aligned. Colors and
-// backgrounds are handled when rendering instead (see
-// mupdf.Document.RenderLayers), where text is drawn in full ink and its hue
-// kept apart: MuPDF lets inline styles win over these rules.
-const userCSS = `
-body, body * { font-family: serif !important; }
-pre, pre *, code, kbd, samp, tt { font-family: monospace !important; }
-p, li { line-height: 1.45 !important; text-align: left !important; }
-`
-
 // Location is where the reader is in a book, independently of the layout:
 // the first character shown, or, for places saved before anchors existed, a
 // chapter and how far into it.
@@ -52,22 +40,23 @@ type Style struct {
 // visible pages are drawn into. It is not safe for concurrent use, except
 // that searches run on goroutines of their own.
 type Session struct {
-	path     string
-	doc      *mupdf.Document
-	outline  []mupdf.OutlineItem
-	chapters []Chapter
-	start    Location // where to go on the first layout
-	geo      Geometry
-	fontSize float64
-	pages    int
-	page     int // first visible page, a multiple of the number of columns
-	style    Style
-	mask     []byte
-	colors   []byte      // hues of the text of the last render, 4 bytes per pixel of mask; nil without BookColors
-	images   []byte      // image layer of the last render, 4 bytes per pixel of mask; nil with PicturesHidden
-	drawn    mupdf.Drawn // which of colors and images the last render drew into
-	stride   int
-	pictures map[int][]mupdf.Rect // where the pages measured in this layout draw images
+	path       string
+	typography Typography
+	doc        *mupdf.Document
+	outline    []mupdf.OutlineItem
+	chapters   []Chapter
+	start      Location // where to go on the first layout
+	geo        Geometry
+	fontSize   float64
+	pages      int
+	page       int // first visible page, a multiple of the number of columns
+	style      Style
+	mask       []byte
+	colors     []byte      // hues of the text of the last render, 4 bytes per pixel of mask; nil without BookColors
+	images     []byte      // image layer of the last render, 4 bytes per pixel of mask; nil with PicturesHidden
+	drawn      mupdf.Drawn // which of colors and images the last render drew into
+	stride     int
+	pictures   map[int][]mupdf.Rect // where the pages measured in this layout draw images
 
 	// at is the anchor the reader is at. Only moving (Turn, GoTo and
 	// GoToAnchor) changes it, and every layout shows it, so going back and
@@ -86,15 +75,11 @@ type Session struct {
 	text   *bookText         // text for searching, extracted on first use
 }
 
-// Open opens the book at path; the first Layout shows the page at start.
+// Open opens the book at path in the zero Typography; the first Layout
+// shows the page at start.
 func Open(path string, start Location) (*Session, error) {
-	doc, err := mupdf.Open(path, userCSS)
+	doc, outline, err := openDocument(path, Typography{})
 	if err != nil {
-		return nil, err
-	}
-	outline, err := doc.Outline()
-	if err != nil {
-		doc.Close()
 		return nil, err
 	}
 	s := &Session{path: path, doc: doc, outline: outline, start: start}
@@ -126,6 +111,44 @@ func (s *Session) Language() string {
 	return s.doc.Metadata(mupdf.MetaLanguage)
 }
 
+// openDocument opens the book at path with the user style sheet of t and
+// reads its table of contents.
+func openDocument(path string, t Typography) (*mupdf.Document, []mupdf.OutlineItem, error) {
+	doc, err := t.open(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	outline, err := doc.Outline()
+	if err != nil {
+		doc.Close()
+		return nil, nil, err
+	}
+	return doc, outline, nil
+}
+
+// SetTypography sets the text in t. The book has no layout until the next
+// Layout, which lays it out again showing the same text, also when the
+// geometry and the font size stay the same.
+func (s *Session) SetTypography(t Typography) error {
+	if t.css() == s.typography.css() {
+		s.typography = t
+		return nil
+	}
+	// MuPDF keeps the chapters it parsed with the old style sheet, so the
+	// book is opened again rather than given a new one.
+	doc, outline, err := openDocument(s.path, t)
+	if err != nil {
+		return err
+	}
+	s.doc.Close()
+	s.doc, s.outline, s.typography = doc, outline, t
+	s.pages = 0
+	return nil
+}
+
+// Typography returns how the text is set.
+func (s *Session) Typography() Typography { return s.typography }
+
 // Layout reflows the book for geo and fontSize and shows the screen that
 // holds the reader's anchor, so that the same text stays in view. It does
 // nothing when neither changed.
@@ -133,9 +156,17 @@ func (s *Session) Layout(geo Geometry, fontSize float64) error {
 	if s.pages > 0 && geo == s.geo && fontSize == s.fontSize {
 		return nil
 	}
+	return s.layout(geo, fontSize)
+}
+
+// layout reflows the book for geo and fontSize; see Layout. A view too small
+// for a page leaves the layout as it was; any other failure leaves the book
+// without one.
+func (s *Session) layout(geo Geometry, fontSize float64) error {
 	if !geo.usable() {
 		return errors.New("reading: view too small for a page")
 	}
+	s.pages = 0
 	pages, err := s.doc.Layout(geo.ColumnWidth, geo.PageHeight, fontSize)
 	if err != nil {
 		return err

@@ -170,7 +170,7 @@ func TestParagraphsInBook(t *testing.T) {
 		t.Fatalf("Open error: %v", err)
 	}
 	t.Cleanup(s.Close)
-	if err := s.Layout(NewGeometry(1384, 874, 52, 2, 16, SpreadAuto), 16); err != nil {
+	if err := s.Layout(NewGeometry(1384, 874, 52, 2, 16, SpreadAuto, MarginsNormal), 16); err != nil {
 		t.Fatalf("Layout error: %v", err)
 	}
 	if _, err := s.GoTo(s.Pages() / 2); err != nil {

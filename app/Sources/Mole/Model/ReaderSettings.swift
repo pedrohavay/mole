@@ -19,12 +19,20 @@ struct ReaderSettings: Codable, Equatable {
     /// BookColors keeps the hues of colored text, such as headings and code;
     /// black and gray text keeps the tint.
     var bookColors: Bool
+    /// Font is the family of one of ReaderFont.installed, or empty for the
+    /// book's own fonts.
+    var font: String
+    var lineSpacing: LineSpacing
+    var margins: PageMargins
+    /// Justify sets paragraphs flush with both margins instead of the left one.
+    var justify: Bool
 
     static let fontSizes = 12.0...40.0
     static let levels = 0.02...1.0
 
     init(level: Double, edr: Bool, tint: Int, gamma: Double, fontSize: Double, spread: Spread, accent: String,
-         pictures: PictureMode = .night, bookColors: Bool = false) {
+         pictures: PictureMode = .night, bookColors: Bool = false, font: String = "",
+         lineSpacing: LineSpacing = .normal, margins: PageMargins = .normal, justify: Bool = false) {
         self.level = level
         self.edr = edr
         self.tint = tint
@@ -34,10 +42,15 @@ struct ReaderSettings: Codable, Equatable {
         self.accent = accent
         self.pictures = pictures
         self.bookColors = bookColors
+        self.font = font
+        self.lineSpacing = lineSpacing
+        self.margins = margins
+        self.justify = justify
     }
 
-    // Pictures and book colors arrived after the first release of the core,
-    // so a library that predates them has no value and gets the defaults.
+    // Pictures, book colors and the typography arrived after the first
+    // release of the core, so a library that predates them has no values and
+    // gets the defaults.
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         level = try values.decode(Double.self, forKey: .level)
@@ -49,6 +62,61 @@ struct ReaderSettings: Codable, Equatable {
         accent = try values.decode(String.self, forKey: .accent)
         pictures = try values.decodeIfPresent(PictureMode.self, forKey: .pictures) ?? .night
         bookColors = try values.decodeIfPresent(Bool.self, forKey: .bookColors) ?? false
+        font = try values.decodeIfPresent(String.self, forKey: .font) ?? ""
+        lineSpacing = try values.decodeIfPresent(LineSpacing.self, forKey: .lineSpacing) ?? .normal
+        margins = try values.decodeIfPresent(PageMargins.self, forKey: .margins) ?? .normal
+        justify = try values.decodeIfPresent(Bool.self, forKey: .justify) ?? false
+    }
+
+    /// Typography is how the core sets the text in these settings.
+    var typography: Typography {
+        Typography(font: font, lineSpacing: lineSpacing, margins: margins, justify: justify)
+    }
+}
+
+/// Typography is how the core sets the text of a book over the book's own
+/// styles, as Session.layout hands it over.
+struct Typography: Encodable, Equatable {
+    var font: String
+    var lineSpacing: LineSpacing
+    var margins: PageMargins
+    var justify: Bool
+}
+
+/// LineSpacing is how far apart the lines of a paragraph are. The raw
+/// values are the core's, where 0 is the default.
+enum LineSpacing: Int, Codable, CaseIterable, Identifiable {
+    case compact = 1
+    case normal = 0
+    case relaxed = 2
+
+    var id: Int { rawValue }
+
+    var title: String { L10n.text("spacing.\(String(describing: self))") }
+}
+
+/// PageMargins is how much room the reader leaves around the pages. Wider
+/// margins also keep lines shorter on a wide window. The raw values are the
+/// core's, where 0 is the default.
+enum PageMargins: Int, Codable, CaseIterable, Identifiable {
+    case narrow = 1
+    case normal = 0
+    case wide = 2
+
+    var id: Int { rawValue }
+
+    var title: String { L10n.text("margins.\(String(describing: self))") }
+}
+
+extension ReaderFont {
+    /// Returns the name to show for family; empty is the book's own fonts.
+    static func name(_ family: String) -> String {
+        family.isEmpty ? L10n.text("font.book") : family
+    }
+
+    /// Returns family at size, to show its name in it.
+    static func sample(_ family: String, size: CGFloat) -> Font {
+        .custom(family, size: size)
     }
 }
 

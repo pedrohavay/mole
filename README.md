@@ -36,6 +36,10 @@ Mole is in early development and has no release builds yet.
 - The book's own text colors on request, so a red heading glows red and
   highlighted code keeps its hues, while black and gray text takes the
   reader's color.
+- The book's own fonts or one of the Mac's: Iowan Old Style, Charter,
+  Georgia, Palatino, Baskerville, Avenir Next or Helvetica Neue. Code keeps
+  a monospaced font. Lines can be compact, normal or relaxed, margins
+  narrow, normal or wide, and paragraphs aligned left or justified.
 - A library with covers, shelves for books in progress, not started and
   finished, search by title or author, drag and drop, and tabs that reopen
   on the next launch.
@@ -46,7 +50,7 @@ Mole is in early development and has no release builds yet.
   notes, bookmarks, and a way to copy all of a book's highlights as
   Markdown.
 - Reading positions tied to the text, so the page you were on survives a
-  new font size or window size.
+  new font, font size, spacing, margin or window size.
 - The system dictionary for any word (force click it, or select it and
   press ⌃⌘D) and Apple's translation of a selection on macOS 14.4 and later.
 - An estimate of the reading time left in the chapter and in the book,
@@ -106,8 +110,9 @@ several collections.
 Click the right side of the page, press →, or swipe left to turn the page;
 click the left third or press ← to go back. The sun button in the status bar
 sets the brightness, the EDR switch and the text color. The Aa button sets
-the text size, the stroke weight, one or two pages, how pictures are shown,
-and whether text keeps the book's colors.
+the text size, the font, the line spacing and alignment, the margins, the
+stroke weight, one or two pages, how pictures are shown, and whether text
+keeps the book's colors. Settings > Reading has the same options.
 
 Click a picture to open it full size, in its colors. Pinch or press ⌘+ and
 ⌘− to zoom, ⌘0 to fit it to the window, and Esc to close it.

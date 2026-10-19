@@ -59,12 +59,16 @@ final class Session {
     }
 
     /// Reflows the book for a view of width x height points at scale pixels
-    /// per point, keeping the reader at the same place in the text.
-    func layout(width: Double, height: Double, scale: Double, fontSize: Double, spread: Spread) throws {
+    /// per point with the text set in typography, keeping the reader at the
+    /// same place in the text.
+    func layout(width: Double, height: Double, scale: Double, fontSize: Double, spread: Spread,
+                typography: Typography) throws {
         try checkOpen()
-        guard mole_session_layout(handle, width, height, 0, scale, fontSize, Int32(spread.rawValue)) == 1 else {
-            throw CoreCall.lastError()
+        let json = try CoreCall.encode(typography)
+        let done = CoreCall.withCString(json) {
+            mole_session_layout(handle, width, height, 0, scale, fontSize, Int32(spread.rawValue), $0)
         }
+        guard done == 1 else { throw CoreCall.lastError() }
     }
 
     /// Moves by screens screens of pages; it reports whether the page changed.

@@ -31,6 +31,7 @@ struct ReaderPane: View {
                     ReaderCanvas(model: model, tab: tab, revision: tab.revision, gain: model.gain,
                                  tint: model.settings.tint, gamma: model.settings.gamma,
                                  fontSize: model.settings.fontSize, spread: model.settings.spread,
+                                 typography: model.settings.typography,
                                  pictures: model.settings.pictures, bookColors: model.settings.bookColors,
                                  marks: tab.marks, accentLight: model.accentLight, showsPicture: viewing != nil,
                                  onEdit: { annotation, point in
@@ -126,6 +127,7 @@ struct ReaderCanvas: NSViewRepresentable {
     let gamma: Double
     let fontSize: Double
     let spread: Spread
+    let typography: Typography
     let pictures: PictureMode
     let bookColors: Bool
     let marks: [PageMark]

@@ -104,7 +104,8 @@ func TestSettings(t *testing.T) {
 	if got != DefaultSettings() {
 		t.Errorf("Settings before saving = %+v, want defaults %+v", got, DefaultSettings())
 	}
-	want := Settings{Level: 0.31, EDR: false, Tint: 2, Gamma: 1.5, FontSize: 24, Spread: 2, Accent: "#3D7BFF", Pictures: 1, BookColors: true}
+	want := Settings{Level: 0.31, EDR: false, Tint: 2, Gamma: 1.5, FontSize: 24, Spread: 2, Accent: "#3D7BFF", Pictures: 1, BookColors: true,
+		Font: "Charter", LineSpacing: 2, Margins: 1, Justify: true}
 	for range 2 { // the second save updates the existing row
 		if err := s.SaveSettings(want); err != nil {
 			t.Fatalf("SaveSettings error: %v", err)

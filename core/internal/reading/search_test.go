@@ -121,7 +121,7 @@ func TestSearch(t *testing.T) {
 	}
 
 	// A match may cross a line break of the search layout.
-	doc, err := mupdf.Open(path, userCSS)
+	doc, err := mupdf.Open(path, Typography{}.css())
 	if err != nil {
 		t.Fatalf("mupdf.Open error: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestSearchInBook(t *testing.T) {
 		t.Fatalf("Open error: %v", err)
 	}
 	t.Cleanup(s.Close)
-	if err := s.Layout(NewGeometry(1384, 874, 52, 2, 21, SpreadAuto), 21); err != nil {
+	if err := s.Layout(NewGeometry(1384, 874, 52, 2, 21, SpreadAuto, MarginsNormal), 21); err != nil {
 		t.Fatalf("Layout error: %v", err)
 	}
 

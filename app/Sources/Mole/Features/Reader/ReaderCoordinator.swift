@@ -44,6 +44,7 @@ final class ReaderCoordinator {
         var scale: CGFloat
         var fontSize: Double
         var spread: Spread
+        var typography: Typography
     }
 
     init(model: AppModel) {
@@ -104,11 +105,11 @@ final class ReaderCoordinator {
         guard let tab, let window = view.window, view.bounds.width > 200, view.bounds.height > 200 else { return }
         let settings = model.settings
         let wanted = Layout(size: view.bounds.size, scale: window.backingScaleFactor,
-                            fontSize: settings.fontSize, spread: settings.spread)
+                            fontSize: settings.fontSize, spread: settings.spread, typography: settings.typography)
         guard wanted != laidOut else { return }
         do {
             try tab.layout(width: wanted.size.width, height: wanted.size.height, scale: wanted.scale,
-                           fontSize: wanted.fontSize, spread: wanted.spread)
+                           fontSize: wanted.fontSize, spread: wanted.spread, typography: wanted.typography)
         } catch {
             NSLog("Mole: cannot lay out %@: %@", tab.book.title, error.localizedDescription)
             return

@@ -199,15 +199,27 @@ func (s *Session) HitTest(x, y float64) (Anchor, bool, error) {
 // hit returns the counted character under the point x, y of the page, or the
 // one nearest to it on the line under the point.
 func (t *pageText) hit(x, y float64) (int, bool) {
+	// under returns how far y is from the middle of line l, and false when
+	// y is not over it. Lines of a paragraph touch; a little slack covers
+	// the gaps around smaller text and between paragraphs.
+	under := func(l textLine) (float64, bool) {
+		pad := (l.box.Y1 - l.box.Y0) / 4
+		return math.Abs(y - (l.box.Y0+l.box.Y1)/2), y >= l.box.Y0-pad && y <= l.box.Y1+pad
+	}
+	nearest := math.Inf(1)
+	for _, l := range t.lines {
+		if d, ok := under(l); ok {
+			nearest = min(nearest, d)
+		}
+	}
+	// MuPDF cuts a justified line into pieces at its widest spaces; of the
+	// pieces at the nearest height, the one closest to x wins.
 	line, best := -1, math.Inf(1)
 	for i, l := range t.lines {
-		// Lines of a paragraph touch; a little slack covers the gaps around
-		// smaller text and between paragraphs.
-		pad := (l.box.Y1 - l.box.Y0) / 4
-		if y < l.box.Y0-pad || y > l.box.Y1+pad {
+		if d, ok := under(l); !ok || d > nearest+0.5 {
 			continue
 		}
-		if d := math.Abs(y - (l.box.Y0+l.box.Y1)/2); d < best {
+		if d := max(l.box.X0-x, x-l.box.X1, 0); d < best {
 			line, best = i, d
 		}
 	}
@@ -241,6 +253,7 @@ func (s *Session) RangeRects(r Range) ([]Rect, error) {
 		if r.End.Compare(t.first()) <= 0 || r.Start.Compare(t.end()) >= 0 {
 			continue
 		}
+		first := len(rects) // the first box of this page
 		for _, l := range t.lines {
 			x0, x1 := math.Inf(1), math.Inf(-1)
 			for i := l.first; i < l.end; i++ {
@@ -248,12 +261,27 @@ func (s *Session) RangeRects(r Range) ([]Rect, error) {
 					x0, x1 = min(x0, t.chars[i].Box.X0), max(x1, t.chars[i].Box.X1)
 				}
 			}
-			if x0 <= x1 {
-				rects = append(rects, Rect{X: p.left + x0, Y: p.top + l.box.Y0, Width: x1 - x0, Height: l.box.Y1 - l.box.Y0})
+			if x0 > x1 {
+				continue
 			}
+			box := Rect{X: p.left + x0, Y: p.top + l.box.Y0, Width: x1 - x0, Height: l.box.Y1 - l.box.Y0}
+			// The pieces MuPDF cuts a justified line into make one box.
+			if n := len(rects); n > first && sameLine(rects[n-1], box) {
+				last := &rects[n-1]
+				right := max(last.X+last.Width, box.X+box.Width)
+				last.X = min(last.X, box.X)
+				last.Width = right - last.X
+				continue
+			}
+			rects = append(rects, box)
 		}
 	}
 	return rects, nil
+}
+
+// sameLine reports whether two boxes of a page are on the same line of text.
+func sameLine(a, b Rect) bool {
+	return math.Abs(a.Y-b.Y) < 0.5 && math.Abs(a.Height-b.Height) < 0.5
 }
 
 // RangeText returns the text of r, on screen or not, with whitespace

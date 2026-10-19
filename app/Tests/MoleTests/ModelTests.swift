@@ -57,7 +57,26 @@ final class ReaderSettingsTests: XCTestCase {
         let settings = try JSONDecoder().decode(ReaderSettings.self, from: Data(json.utf8))
         XCTAssertEqual(settings.spread, .double)
         XCTAssertEqual(settings.accent, "#3E63DD")
+        // A library that predates the typography gets the defaults.
+        XCTAssertEqual(settings.typography, Typography(font: "", lineSpacing: .normal, margins: .normal, justify: false))
         XCTAssertEqual(try JSONDecoder().decode(ReaderSettings.self, from: JSONEncoder().encode(settings)), settings)
+    }
+
+    func testDecodesTheTypography() throws {
+        let json = ##"{"level":0.5,"edr":true,"tint":1,"gamma":2.2,"fontSize":21,"spread":0,"accent":"","pictures":0,"bookColors":false,"font":"Georgia","lineSpacing":2,"margins":1,"justify":true}"##
+        let settings = try JSONDecoder().decode(ReaderSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(settings.typography, Typography(font: "Georgia", lineSpacing: .relaxed, margins: .narrow, justify: true))
+        let style = try JSONSerialization.jsonObject(with: JSONEncoder().encode(settings.typography)) as? [String: Any]
+        XCTAssertEqual(style?["font"] as? String, "Georgia")
+        XCTAssertEqual(style?["lineSpacing"] as? Int, 2)
+        XCTAssertEqual(style?["margins"] as? Int, 1)
+        XCTAssertEqual(style?["justify"] as? Bool, true)
+    }
+
+    func testOffersInstalledFonts() {
+        // These come with every macOS 14 install.
+        XCTAssertTrue(ReaderFont.installed.contains("Georgia"), "\(ReaderFont.installed)")
+        XCTAssertTrue(ReaderFont.installed.contains("Charter"), "\(ReaderFont.installed)")
     }
 
     func testDecodesPicturesAndBookColors() throws {

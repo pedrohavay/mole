@@ -10,12 +10,14 @@ let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
 let coreLibrary = "\(root)/../core/build"
 
 // libmolecore.a already holds MuPDF: `make core` merges MuPDF's static
-// libraries into it, so the app does not need to know where MuPDF is.
+// libraries into it, so the app does not need to know where MuPDF is. The
+// core finds installed fonts through CoreText.
 let coreLinking: [LinkerSetting] = [
     .unsafeFlags(["-L", coreLibrary]),
     .linkedLibrary("molecore"),
     .linkedLibrary("resolv"),
     .linkedFramework("CoreFoundation"),
+    .linkedFramework("CoreText"),
 ]
 
 let package = Package(

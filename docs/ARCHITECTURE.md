@@ -157,6 +157,51 @@ per layout) and for its pixels as on white paper, at its own resolution
 (`mole_session_image_pixels`). `PictureViewer` shows them in an SDR
 `NSScrollView` over the page, which handles the pinch and the keys.
 
+## Fonts and typography
+
+The core sets a book's text through a user style sheet
+(`reading.Typography`) that MuPDF applies over the book's own styles. It
+always keeps code in a monospaced font; colors are not CSS (see Colors and
+pictures). The reader's choices add a font family for the body, a line
+height for paragraphs and list items, and left or justified alignment.
+Margins are not CSS either: `reading.NewGeometry` turns them into the room
+around the pages and the widest a page may grow.
+
+MuPDF knows only the fonts it has built in, so `systemfonts.c` installs a
+loader with `fz_install_load_system_font_funcs`. When a style names a
+family MuPDF does not have, the loader asks CoreText for the face of that
+family closest to the weight and style wanted, gets the file it lives in,
+finds the face's index in a collection (`.ttc`) by its PostScript name, and
+hands the file to MuPDF. The faces of one collection share one copy of the
+file, and families that are not installed are remembered, since MuPDF asks
+again for every element styled with them. macOS hides some of its own
+families behind a leading dot (`.New York`); the loader tries that name
+too. A book that names an installed font, Georgia or Garamond for example,
+now gets it, where it used to fall back to MuPDF's serif.
+
+MuPDF 1.26 builds FreeType without support for font variations, so a
+variable font loads at its default instance and MuPDF makes up its bold.
+For New York that instance is the display cut, which is why the reader does
+not offer it. MuPDF does not hyphenate either: it breaks words only at the
+soft hyphens a book has, and has no CSS `hyphens`, so justified text can
+space words widely.
+
+A new typography opens the book again before it is laid out. MuPDF keeps
+the chapters it parsed with the old style sheet and its page counts, so
+giving the open document a new style sheet would show stale styles. Anchors
+do not depend on the typography, so the reader stays at the same text, and
+the background copy that searches read stays valid.
+
+Two things in MuPDF's text extraction needed care. It starts a new text
+block, which the core reads as a paragraph, wherever two lines are more
+than 1.5 em apart, which the relaxed spacing passes, so
+`mupdf.Document.SetLineDistance` joins such blocks back when their lines
+follow at the line height chosen; the paragraphs VoiceOver and reading
+aloud go by stay whole. And it cuts a justified line into pieces at its
+widest spaces, so hit tests pick the piece nearest the pointer and the
+boxes of a range, which highlights, the spoken sentence and VoiceOver's
+paragraph frames are drawn from, join the pieces of a line into one.
+
 ## Marks under the text
 
 Highlights, the selection, search hits and the sentence being read aloud
@@ -230,9 +275,9 @@ Reading stops when the book closes or another tab is shown.
 
 ## Positions that survive relayout
 
-MuPDF reflows an EPUB whenever the font size or the page size changes, so
-page numbers are not stable. MuPDF's own bookmarks for EPUB are not stable
-across runs either. The core therefore stores a position as a chapter and a
+MuPDF reflows an EPUB whenever the font size, the page size or the
+typography changes, so page numbers are not stable. MuPDF's own bookmarks
+for EPUB are not stable across runs either. The core therefore stores a position as a chapter and a
 fraction of that chapter (`library.Position`) and maps it back to a page
 after every layout.
 

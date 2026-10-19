@@ -10,7 +10,8 @@
 typedef struct md_doc md_doc;
 
 // md_open opens a document with its own MuPDF context, which may allocate
-// at most limit bytes. user_css may be NULL. It returns NULL and writes a
+// at most limit bytes and finds installed fonts that the document's styles
+// name through md_find_font. user_css may be NULL. It returns NULL and writes a
 // message into err on failure.
 md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err, int errlen);
 
@@ -125,12 +126,24 @@ typedef struct {
     int c;
     float x0, y0, x1, y1;
     int line;  // index of the line on the page, counting from 0
-    int block; // index of the text block on the page, counting from 0
+    int block; // index of the paragraph on the page, counting from 0; see md_page_chars
 } md_char;
 
 // md_page_chars extracts the text of a page into *chars (release it with
-// md_free). It returns the number of characters, or -1 on error.
-int md_page_chars(md_doc *d, int page, md_char **chars, char *err, int errlen);
+// md_free). Its paragraphs are MuPDF's text blocks, which MuPDF splits where
+// two lines are more than 1.5 em apart. When line_dist is larger, a block
+// whose first line goes on the block before it, no more than line_dist ems
+// below, belongs to the same paragraph. It returns the number of characters,
+// or -1 on error.
+int md_page_chars(md_doc *d, int page, float line_dist, md_char **chars, char *err, int errlen);
+
+// md_find_font looks up an installed font family through CoreText and copies
+// the path of the file that holds its face closest to bold and italic into
+// path, and the index of that face in the file (0 unless the file is a
+// collection) into *index. It returns 0 on success and -1 when no family of
+// that name is installed. The CSS generic families (serif, monospace, ...)
+// are never looked up: MuPDF has fonts of its own for them.
+int md_find_font(const char *family, int bold, int italic, char *path, int pathlen, int *index);
 
 void md_free(void *p);
 

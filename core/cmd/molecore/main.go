@@ -332,6 +332,11 @@ type settingsJSON struct {
 	Accent     string  `json:"accent"`
 	Pictures   int     `json:"pictures"`   // 0 night, 1 original colors, 2 hidden
 	BookColors bool    `json:"bookColors"` // keep the hues of colored text
+	// The typography of the text, as in typographyJSON.
+	Font        string `json:"font"`
+	LineSpacing int    `json:"lineSpacing"`
+	Margins     int    `json:"margins"`
+	Justify     bool   `json:"justify"`
 }
 
 //export mole_library_settings
@@ -532,25 +537,56 @@ func mole_session_close(s C.int64_t) {
 	sessions.remove(int64(s))
 }
 
+// typographyJSON is how the text is set, the typography argument of
+// mole_session_layout.
+type typographyJSON struct {
+	Font        string `json:"font"`        // a family of mole_fonts, or "" for the book's own fonts
+	LineSpacing int    `json:"lineSpacing"` // 0 normal, 1 compact, 2 relaxed
+	Margins     int    `json:"margins"`     // 0 normal, 1 narrow, 2 wide
+	Justify     bool   `json:"justify"`     // justified rather than left-aligned paragraphs
+}
+
 // mole_session_layout reflows the book for a view of width x height points
 // with topInset points covered by the toolbar, scale pixels per point, a base
-// font size and spread pages side by side (0 automatic, 1 single, 2 double),
-// keeping the reader at the same place.
+// font size, spread pages side by side (0 automatic, 1 single, 2 double) and
+// the text set in typography, a JSON object of the form
+// {"font":string,"lineSpacing":int,"margins":int,"justify":bool}, keeping the
+// reader at the same place.
 //
 //export mole_session_layout
-func mole_session_layout(s C.int64_t, width, height, topInset, scale, fontSize C.double, spread C.int) C.int {
+func mole_session_layout(s C.int64_t, width, height, topInset, scale, fontSize C.double, spread C.int,
+	typography *C.char) C.int {
 	ss, ok := sessions.get(int64(s))
 	if !ok {
 		fail(errBadHandle)
 		return 0
 	}
+	var t typographyJSON
+	if !parseJSON(typography, "typography", &t) {
+		return 0
+	}
 	geo := reading.NewGeometry(float64(width), float64(height), float64(topInset), float64(scale), float64(fontSize),
-		reading.Spread(spread))
-	if err := ss.book.Reading().Layout(geo, float64(fontSize)); err != nil {
+		reading.Spread(spread), reading.Margins(t.Margins))
+	read := ss.book.Reading()
+	err := read.SetTypography(reading.Typography{Font: t.Font, LineSpacing: reading.LineSpacing(t.LineSpacing), Justify: t.Justify})
+	if err != nil {
+		fail(err)
+		return 0
+	}
+	if err := read.Layout(geo, float64(fontSize)); err != nil {
 		fail(err)
 		return 0
 	}
 	return 1
+}
+
+// mole_fonts returns the families of the installed fonts the reader offers
+// for the font of a typography, as a JSON array of strings in the order to
+// show them.
+//
+//export mole_fonts
+func mole_fonts() *C.char {
+	return jsonString(append([]string{}, reading.Fonts()...))
 }
 
 // moved returns 1 if the page changed. A failure to save the new place is

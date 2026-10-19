@@ -6,7 +6,8 @@ import SwiftUI
 /// the library, checks that the title bar row takes clicks, opens the first
 /// book, turns some pages, walks the accessibility tree, reads the end of a
 /// screen aloud, captures the reader, the book's colors, its pictures in
-/// each mode, the picture viewer and the Settings window, and quits. With
+/// each mode, the picture viewer, the reader in several fonts, margins and
+/// spacings, the Text popover and the Settings window, and quits. With
 /// `--verify-folder tree` it checks folder imports and collections instead
 /// (see verifyFolders). It reports to standard error. Captures are 8-bit,
 /// so EDR values above SDR white come out clipped.
@@ -296,6 +297,61 @@ struct Verifier {
         }
     }
 
+    /// Look is a way to set the text that the typography check captures.
+    private struct Look {
+        let name: String
+        let change: (inout ReaderSettings) -> Void
+    }
+
+    /// Shows a search hit well into the book and highlights a passage near
+    /// the top of its screen, then sets the text in other fonts, margins and
+    /// spacings, capturing each look of the page. For each it reports
+    /// whether the reader stayed at the same text and whether the highlight,
+    /// the hit, VoiceOver's paragraphs and the sentences read aloud still lie
+    /// over their text. The settings are put back afterwards.
+    private func typography() {
+        guard let tab = model.activeTab, let window = mainWindow,
+              let view = window.contentView?.firstDescendant(of: EDRMetalView.self) else { return finish() }
+        let original = model.settings
+        let showedContents = model.showContents
+        // A page of running text: a hit well into the book, past the
+        // table of contents.
+        tab.showHit(tab.hits.count / 2)
+        model.showContents = false
+        after(1.0) {
+            capture("typography-start.png")
+            // The highlight starts the screen, so it stays on the screen
+            // that holds the reader's place in every look.
+            guard let start = tab.visibleRange?.start,
+                  let first = try? tab.session.rects(of: TextRange(start: start, end: Anchor(chapter: start.chapter, offset: start.offset + 1))).first
+            else { return finish() }
+            // Showing the hit left the reader's place at the hit; the place
+            // is the start of the screen instead, as after turning a page.
+            tab.go(to: start)
+            tab.beginSelection(at: CGPoint(x: first.midX, y: first.midY))
+            tab.extendSelection(to: CGPoint(x: first.midX + 180, y: first.midY))
+            let highlight = try? tab.highlightSelection(color: 3)
+            report("typography: highlighted \(highlight.map { ReaderTab.excerpt($0.text, limit: 40) } ?? "nothing")")
+            let looks = [
+                Look(name: "font-book") { $0.font = "" },
+                Look(name: "font-georgia") { $0.font = "Georgia" },
+                Look(name: "font-avenir-next") { $0.font = "Avenir Next" },
+                Look(name: "font-palatino") { $0.font = "Palatino" },
+                Look(name: "font-iowan") { $0.font = "Iowan Old Style" },
+                Look(name: "margins-narrow") { $0.font = "Georgia"; $0.margins = .narrow },
+                Look(name: "margins-wide-relaxed") { $0.font = "Georgia"; $0.margins = .wide; $0.lineSpacing = .relaxed },
+                Look(name: "justified") { $0.font = "Charter"; $0.justify = true },
+            ]
+            showLooks(looks[...], tab: tab, start: start, highlight: highlight) {
+                showTextPanel(over: view) {
+                    model.settings = original
+                    model.showContents = showedContents
+                    after(0.8) { finish() }
+                }
+            }
+        }
+    }
+
     /// Captures the first screen with colored text, with and without the
     /// book's colors, then screens with pictures, the last one in every
     /// picture mode, and opens a picture in the viewer.
@@ -313,15 +369,113 @@ struct Verifier {
         report("colored text on page \(tab.state.page + 1)")
         after(0.8) {
             capture("colors.png")
-            model.settings.bookColors = false
-            after(0.6) {
-                capture("colors-off.png")
-                seekPicture(tab, from: 0, name: "pictures.png") {
-                    seekPicture(tab, from: 40, name: "pictures-2.png") {
-                        seekPicture(tab, from: 150, name: "pictures-3.png") { pictureModes(tab) }
+            colorsInTypography(tab) {
+                model.settings.bookColors = false
+                after(0.6) {
+                    capture("colors-off.png")
+                    seekPicture(tab, from: 0, name: "pictures.png") {
+                        seekPicture(tab, from: 40, name: "pictures-2.png") {
+                            seekPicture(tab, from: 150, name: "pictures-3.png") { pictureModes(tab) }
+                        }
                     }
                 }
             }
+        }
+    }
+
+    /// Sets the screen with colored text in Georgia, relaxed and justified,
+    /// captures it and reports whether the text keeps its colors, then puts
+    /// the typography back.
+    private func colorsInTypography(_ tab: ReaderTab, then next: @escaping @MainActor () -> Void) {
+        let typography = model.settings.typography
+        model.settings.font = "Georgia"
+        model.settings.lineSpacing = .relaxed
+        model.settings.justify = true
+        after(1.5) {
+            capture("colors-typography.png")
+            let colored = (try? tab.session.textColors()) != nil
+            report("colored text in Georgia, relaxed and justified: \(colored ? "keeps its colors" : "LOST its colors") on page \(tab.state.page + 1)")
+            model.settings.font = typography.font
+            model.settings.lineSpacing = typography.lineSpacing
+            model.settings.justify = typography.justify
+            after(1.2) { next() }
+        }
+    }
+
+    private func showLooks(_ looks: ArraySlice<Look>, tab: ReaderTab, start: Anchor, highlight: Annotation?,
+                           then done: @escaping @MainActor () -> Void) {
+        guard let look = looks.first else { return done() }
+        var settings = model.settings
+        settings.font = ""
+        settings.lineSpacing = .normal
+        settings.margins = .normal
+        settings.justify = false
+        look.change(&settings)
+        model.settings = settings
+        after(2.0) {
+            capture("\(look.name).png")
+            let hit = tab.currentHit.map { tab.hits[$0].range }
+            let place = tab.visibleRange?.contains(start) == true ? "stays at the same text" : "LOST its place"
+            report("\(look.name): pages \(tab.state.page + 1)-\(tab.state.lastVisible + 1) of \(tab.state.pages), \(place); "
+                + "highlight \(linesUp(highlight?.range, in: tab)); search hit \(linesUp(hit, in: tab)); "
+                + readingFrames(in: tab))
+            showLooks(looks.dropFirst(), tab: tab, start: start, highlight: highlight, then: done)
+        }
+    }
+
+    /// Reports whether the paragraphs VoiceOver reads and the sentences read
+    /// aloud lie over their text: no line box of a paragraph, or of the
+    /// first sentences on screen, may hit test outside it (see lies). It also
+    /// counts paragraphs and lines, since a paragraph a line would mean the
+    /// lines of a paragraph came apart.
+    private func readingFrames(in tab: ReaderTab) -> String {
+        let paragraphs = tab.visibleParagraphs()
+        let lines = paragraphs.reduce(0) { $0 + $1.lines.count }
+        let framed = paragraphs.filter { lies($0.lines, over: $0.range, in: tab) }
+        let parts = tab.visibleRange.flatMap { try? tab.session.paragraphs(of: $0) } ?? []
+        let sentences = ReadAloud.sentences(in: parts).prefix(6)
+        let marked = sentences.filter { linesUp($0.range, in: tab).hasPrefix("lines up") }
+        let paragraphState = framed.count == paragraphs.count ? "frames line up" : "frames MISALIGNED"
+        let sentenceState = marked.count == sentences.count ? "line up" : "MISALIGNED"
+        return "\(paragraphs.count) paragraphs over \(lines) lines, \(paragraphState); "
+            + "\(sentences.count) sentences read aloud \(sentenceState)"
+    }
+
+    /// Reports whether a range on screen is drawn over its text; see lies.
+    private func linesUp(_ range: TextRange?, in tab: ReaderTab) -> String {
+        guard let range else { return "missing" }
+        guard let rects = try? tab.session.rects(of: range), !rects.isEmpty else { return "off screen" }
+        return lies(rects, over: range, in: tab) ? "lines up (\(rects.count) boxes)" : "MISALIGNED (\(rects.count) boxes)"
+    }
+
+    /// Reports whether boxes lie over the text of range: a hit test at the
+    /// middle of each box lands inside range, or on no text at all, as over
+    /// a blank line of a code listing, and at least one lands inside.
+    private func lies(_ boxes: [CGRect], over range: TextRange, in tab: ReaderTab) -> Bool {
+        let anchors = boxes.compactMap { box in (try? tab.session.anchor(at: CGPoint(x: box.midX, y: box.midY))) ?? nil }
+        return !anchors.isEmpty && anchors.allSatisfy { range.contains($0) }
+    }
+
+    /// Shows the Text popover over the bottom right of the page, as the
+    /// status bar button does, and captures it with the typography of the
+    /// last look.
+    private func showTextPanel(over view: NSView, then done: @escaping @MainActor () -> Void) {
+        let popover = NSPopover()
+        popover.contentViewController = NSHostingController(rootView: TextPanel()
+            .environment(model)
+            .environment(\.accent, model.accent)
+            .preferredColorScheme(.dark))
+        popover.behavior = .applicationDefined
+        let corner = NSRect(x: view.bounds.maxX - 30, y: view.bounds.minY, width: 1, height: 1)
+        popover.show(relativeTo: corner, of: view, preferredEdge: view.isFlipped ? .maxY : .minY)
+        after(0.8) {
+            if let window = popover.contentViewController?.view.window {
+                capture("text-panel-typography.png", window: window)
+            } else {
+                report("the Text popover did not open")
+            }
+            popover.close()
+            done()
         }
     }
 
@@ -404,7 +558,7 @@ struct Verifier {
                         let open = window.contentView?.firstDescendant(of: PictureScrollView.self) != nil
                         report("after Esc: viewer open \(open), page has the keys \(window.firstResponder === view)")
                         capture("text-panel.png", view: TextPanel()) {
-                            capture("reading-settings.png", view: ReadingSettings().frame(width: 520)) { finish() }
+                            capture("reading-settings.png", view: ReadingSettings().frame(width: 520)) { typography() }
                         }
                     }
                 }
@@ -475,7 +629,8 @@ struct Verifier {
                 return NSApp.terminate(nil)
             }
             capture("settings.png", window: settings)
-            // The Reading tab holds the voice and speed of reading aloud.
+            // The Reading tab holds the text style and the voice and speed
+            // of reading aloud.
             let defaults = UserDefaults.standard
             let shown = defaults.string(forKey: SettingsTab.storageKey)
             defaults.set(SettingsTab.reading.rawValue, forKey: SettingsTab.storageKey)
