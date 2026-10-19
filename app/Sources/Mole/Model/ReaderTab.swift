@@ -421,6 +421,11 @@ final class ReaderTab: Identifiable {
         return highlights.last { $0.range.contains(anchor) }
     }
 
+    /// Returns the picture under a point of the view, if any.
+    func picture(at point: CGPoint) -> PagePicture? {
+        (try? session.picture(at: point)) ?? nil
+    }
+
     /// Returns text shortened to about limit characters at a word boundary.
     static func excerpt(_ text: String, limit: Int) -> String {
         let flat = text.split(whereSeparator: \.isNewline).joined(separator: " ")

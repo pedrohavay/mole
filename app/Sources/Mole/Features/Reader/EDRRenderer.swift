@@ -23,7 +23,7 @@ enum EDRPipeline {
         let queue: MTLCommandQueue
         let text: MTLRenderPipelineState
         let marks: MTLRenderPipelineState
-        /// Blank is a 1x1 empty texture, bound when there is no image layer.
+        /// Blank is a 1x1 empty texture, bound for a layer the page lacks.
         let blank: MTLTexture
 
         init() throws {
@@ -49,12 +49,12 @@ enum EDRPipeline {
             marks.colorAttachments[0].pixelFormat = .rgba16Float
 
             let blankDescriptor = MTLTextureDescriptor.texture2DDescriptor(
-                pixelFormat: .r8Unorm, width: 1, height: 1, mipmapped: false)
+                pixelFormat: .rgba8Unorm, width: 1, height: 1, mipmapped: false)
             guard let blank = device.makeTexture(descriptor: blankDescriptor) else {
                 throw CoreError(message: L10n.text("error.metal"))
             }
-            var zero: UInt8 = 0
-            blank.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: &zero, bytesPerRow: 1)
+            var zero: UInt32 = 0
+            blank.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: &zero, bytesPerRow: 4)
 
             self.device = device
             self.queue = queue
@@ -78,23 +78,49 @@ enum EDRPipeline {
         return out;
     }
 
-    struct TextParams { float4 ink; float4 imageInk; float gamma; };
+    struct TextParams { float4 tint; float gain; float imageGain; float gamma; };
 
-    // Text light is ink * coverage^gamma; the image layer adds its own,
-    // dimmer light. Alpha carries the coverage, for blending over marks.
+    // Returns an sRGB color in linear Display P3, the space of the layer.
+    float3 linear_p3(float3 srgb) {
+        float3 linear = select(pow((srgb + 0.055) / 1.055, 2.4), srgb / 12.92, srgb <= 0.04045);
+        const float3x3 toP3 = float3x3(float3(0.8225, 0.0332, 0.0171),
+                                       float3(0.1774, 0.9669, 0.0724),
+                                       float3(0.0, 0.0, 0.9108));
+        return toP3 * linear;
+    }
+
+    // Text light is ink * gain * coverage^gamma, where ink is the tint, or
+    // the text's own hue where the colors layer has one. Pictures lie under
+    // the text, as they are on black times imageGain, which stays at or
+    // below SDR white. Alpha carries what covers the pixel, for blending
+    // over marks.
     fragment float4 fs_text(VertexOut in [[stage_in]],
                             texture2d<float, access::read> text [[texture(0)]],
-                            texture2d<float, access::read> image [[texture(1)]],
+                            texture2d<float, access::read> colors [[texture(1)]],
+                            texture2d<float, access::read> image [[texture(2)]],
                             constant TextParams& p [[buffer(0)]]) {
         uint2 size = uint2(text.get_width(), text.get_height());
         uint2 xy = min(uint2(in.position.xy), size - 1);
-        float coverage = pow(text.read(xy).r, p.gamma);
-        float shade = 0.0;
-        if (image.get_width() == size.x && image.get_height() == size.y) {
-            shade = image.read(xy).r;
+        float raw = text.read(xy).r;
+        float coverage = pow(raw, p.gamma);
+        float3 ink = p.tint.rgb;
+        if (colors.get_width() == size.x && colors.get_height() == size.y) {
+            float4 hue = colors.read(xy);
+            if (hue.a > 0.0) {
+                float share = saturate(hue.a / max(raw, 1.0 / 255.0));
+                ink = mix(ink, linear_p3(hue.rgb / hue.a), share);
+            }
         }
-        float3 light = p.ink.rgb * coverage + p.imageInk.rgb * shade;
-        return float4(light, max(coverage, shade));
+        float3 light = ink * (p.gain * coverage);
+        float alpha = coverage;
+        if (image.get_width() == size.x && image.get_height() == size.y) {
+            float4 picture = image.read(xy);
+            if (picture.a > 0.0) {
+                light += linear_p3(picture.rgb / picture.a) * (picture.a * p.imageGain * (1.0 - coverage));
+                alpha += picture.a * (1.0 - coverage);
+            }
+        }
+        return float4(light, alpha);
     }
 
     struct MarkIn { float4 rect; float4 color; };
@@ -121,20 +147,23 @@ enum EDRPipeline {
     """
 }
 
-/// EDRRenderer turns the masks of a session into light on an EDR layer:
+/// EDRRenderer turns the layers of a session into light on an EDR layer:
 /// background pixels are written as 0.0 and glyph pixels as
 /// ink * coverage^gamma, where ink may be above 1.0, brighter than SDR white.
+/// Pictures stay at or below SDR white.
 @MainActor
 final class EDRRenderer {
     private let pipeline: EDRPipeline.Pipeline
     private var text: MTLTexture?
+    private var colors: MTLTexture?
     private var image: MTLTexture?
 
     private struct TextParams {
-        var ink: SIMD4<Float>
-        var imageInk: SIMD4<Float>
+        var tint: SIMD4<Float>
+        var gain: Float
+        var imageGain: Float
         var gamma: Float
-        var padding: SIMD3<Float> = .zero
+        var padding: Float = 0
     }
 
     private struct MarkParams {
@@ -159,35 +188,38 @@ final class EDRRenderer {
     }
 
     /// Copies the text mask into its texture.
-    func upload(text coverage: CoverageMask) {
-        text = upload(coverage, into: text)
+    func upload(text mask: PixelLayer) {
+        text = upload(mask, format: .r8Unorm, into: text)
     }
 
-    /// Copies the image layer into its texture, or drops it when there is none.
-    func upload(image coverage: CoverageMask?) {
-        guard let coverage else {
-            image = nil
-            return
-        }
-        image = upload(coverage, into: image)
+    /// Copies the hues of colored text into their texture, or drops it when
+    /// there is none.
+    func upload(colors layer: PixelLayer?) {
+        colors = layer.flatMap { upload($0, format: .rgba8Unorm, into: colors) }
     }
 
-    private func upload(_ coverage: CoverageMask, into texture: MTLTexture?) -> MTLTexture? {
+    /// Copies the pictures into their texture, or drops it when there is none.
+    func upload(image layer: PixelLayer?) {
+        image = layer.flatMap { upload($0, format: .rgba8Unorm, into: image) }
+    }
+
+    private func upload(_ layer: PixelLayer, format: MTLPixelFormat, into texture: MTLTexture?) -> MTLTexture? {
         var texture = texture
-        if texture?.width != coverage.width || texture?.height != coverage.height {
+        if texture?.width != layer.width || texture?.height != layer.height {
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-                pixelFormat: .r8Unorm, width: coverage.width, height: coverage.height, mipmapped: false)
+                pixelFormat: format, width: layer.width, height: layer.height, mipmapped: false)
             descriptor.usage = .shaderRead
             texture = pipeline.device.makeTexture(descriptor: descriptor)
         }
-        texture?.replace(region: MTLRegionMake2D(0, 0, coverage.width, coverage.height), mipmapLevel: 0,
-                         withBytes: coverage.bytes, bytesPerRow: coverage.stride)
+        texture?.replace(region: MTLRegionMake2D(0, 0, layer.width, layer.height), mipmapLevel: 0,
+                         withBytes: layer.bytes, bytesPerRow: layer.stride)
         return texture
     }
 
-    /// Draws into the layer's next drawable: marks first, then the text with
-    /// ink rgb * gain and the image layer with rgb * imageGain over them.
-    func present(on layer: CAMetalLayer, rgb: SIMD3<Float>, gain: Double, gamma: Double,
+    /// Draws into the layer's next drawable: marks first, then the pictures
+    /// with their colors * imageGain and the text with tint (or its own hue)
+    /// * gain over them.
+    func present(on layer: CAMetalLayer, tint: SIMD3<Float>, gain: Double, gamma: Double,
                  imageGain: Double = 0, marks: [Mark] = []) {
         guard let text, let drawable = layer.nextDrawable(),
               let commands = pipeline.queue.makeCommandBuffer() else { return }
@@ -211,11 +243,12 @@ final class EDRRenderer {
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: params.count)
         }
 
-        var params = TextParams(ink: SIMD4(rgb * Float(gain), 0), imageInk: SIMD4(rgb * Float(imageGain), 0),
+        var params = TextParams(tint: SIMD4(tint, 0), gain: Float(gain), imageGain: Float(imageGain),
                                 gamma: Float(gamma))
         encoder.setRenderPipelineState(pipeline.text)
         encoder.setFragmentTexture(text, index: 0)
-        encoder.setFragmentTexture(image ?? pipeline.blank, index: 1)
+        encoder.setFragmentTexture(colors ?? pipeline.blank, index: 1)
+        encoder.setFragmentTexture(image ?? pipeline.blank, index: 2)
         encoder.setFragmentBytes(&params, length: MemoryLayout<TextParams>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()

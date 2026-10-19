@@ -3,13 +3,15 @@ import SwiftUI
 import Translation
 
 /// ReaderPane shows an open book on the EDR canvas, with the controls that
-/// float over it: the selection bar, the highlight editor and the bookmark
-/// ribbon.
+/// float over it: the selection bar, the highlight editor, the bookmark
+/// ribbon and the picture viewer.
 @MainActor
 struct ReaderPane: View {
     @Environment(AppModel.self) private var model
     let tab: ReaderTab
     @State private var editing: HighlightEdit?
+    /// Viewing is the picture open full size, if any.
+    @State private var viewing: CGImage?
 
     /// HighlightEdit is a highlight being edited and where its popover points.
     struct HighlightEdit: Identifiable {
@@ -29,11 +31,13 @@ struct ReaderPane: View {
                     ReaderCanvas(model: model, tab: tab, revision: tab.revision, gain: model.gain,
                                  tint: model.settings.tint, gamma: model.settings.gamma,
                                  fontSize: model.settings.fontSize, spread: model.settings.spread,
-                                 images: model.settings.images,
-                                 marks: tab.marks, accentLight: model.accentLight) { annotation, point in
-                        editing = HighlightEdit(annotation: annotation,
-                                                anchor: CGRect(x: point.x - 1, y: point.y - 1, width: 2, height: 2))
-                    }
+                                 pictures: model.settings.pictures, bookColors: model.settings.bookColors,
+                                 marks: tab.marks, accentLight: model.accentLight, showsPicture: viewing != nil,
+                                 onEdit: { annotation, point in
+                                     editing = HighlightEdit(annotation: annotation,
+                                                             anchor: CGRect(x: point.x - 1, y: point.y - 1, width: 2, height: 2))
+                                 },
+                                 onPicture: open)
                     if tab.isBookmarked {
                         bookmarkRibbon(width: geometry.size.width)
                     }
@@ -61,10 +65,25 @@ struct ReaderPane: View {
                                 HighlightEditor(tab: tab, annotation: editing.annotation) { self.editing = nil }
                             }
                     }
+                    if let viewing {
+                        PictureViewer(image: viewing) { self.viewing = nil }
+                            .transition(.opacity)
+                    }
                 }
             }
             .background(Theme.page)
             .animation(.easeOut(duration: 0.12), value: tab.selection == nil || tab.isSelecting)
+            .animation(.easeOut(duration: 0.15), value: viewing != nil)
+            .onChange(of: tab.id) { viewing = nil }
+        }
+    }
+
+    /// Opens picture full size.
+    private func open(_ picture: PagePicture) {
+        do {
+            viewing = try tab.session.image(of: picture)
+        } catch {
+            model.alert(L10n.text("picture.failed"), error.localizedDescription)
         }
     }
 
@@ -107,11 +126,16 @@ struct ReaderCanvas: NSViewRepresentable {
     let gamma: Double
     let fontSize: Double
     let spread: Spread
-    let images: ImageLight
+    let pictures: PictureMode
+    let bookColors: Bool
     let marks: [PageMark]
     let accentLight: SIMD3<Float>
+    /// ShowsPicture is set while the picture viewer covers the page.
+    let showsPicture: Bool
     /// OnEdit runs when a click lands on a highlight.
     let onEdit: (Annotation, CGPoint) -> Void
+    /// OnPicture runs when a click lands on a picture.
+    let onPicture: (PagePicture) -> Void
 
     func makeCoordinator() -> ReaderCoordinator { ReaderCoordinator(model: model) }
 
@@ -123,6 +147,7 @@ struct ReaderCanvas: NSViewRepresentable {
         view.onMouse = { [weak view] step, point, event in
             if let view { coordinator.mouse(step, at: point, event: event, in: view) }
         }
+        view.onHover = { coordinator.hover(at: $0) }
         view.onScroll = { coordinator.scroll($0) }
         view.onMenu = { coordinator.menu(at: $0) }
         view.onCopy = { coordinator.model.copySelection() }
@@ -137,6 +162,10 @@ struct ReaderCanvas: NSViewRepresentable {
     func updateNSView(_ view: EDRMetalView, context: Context) {
         let coordinator = context.coordinator
         coordinator.onEdit = onEdit
+        coordinator.onPicture = onPicture
+        // The viewer takes the keys while it is open; give them back after.
+        if coordinator.showsPicture, !showsPicture { view.window?.makeFirstResponder(view) }
+        coordinator.showsPicture = showsPicture
         if coordinator.tab !== tab {
             coordinator.tab = tab
             tab.lookUpHandler = { [weak view] text, box in view?.showDefinition(of: text, at: box) }

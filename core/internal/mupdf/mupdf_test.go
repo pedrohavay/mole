@@ -49,8 +49,9 @@ func TestDocument(t *testing.T) {
 	const scale, stride = 2.0, 1280
 	width, height := 1172, 1880
 	mask := make([]byte, stride*height)
-	images := make([]byte, stride*height)
-	if _, err := doc.RenderLayers(80, scale, mask, images, 0, width, height, stride); err != nil {
+	layers := Layers{Text: mask, Colors: make([]byte, 4*stride*height), Images: make([]byte, 4*stride*height),
+		Width: width, Height: height, Stride: stride}
+	if _, err := doc.RenderLayers(80, scale, layers, PicturesNight); err != nil {
 		t.Fatalf("RenderLayers error: %v", err)
 	}
 	ink := 0
@@ -62,7 +63,8 @@ func TestDocument(t *testing.T) {
 	if ink == 0 || ink > len(mask)/2 {
 		t.Errorf("RenderLayers(80) inked %d of %d pixels, want some ink on a mostly empty page", ink, len(mask))
 	}
-	if _, err := doc.RenderLayers(80, scale, mask, images, len(mask)-10, width, height, stride); err == nil {
+	layers.Offset = len(mask) - 10
+	if _, err := doc.RenderLayers(80, scale, layers, PicturesNight); err == nil {
 		t.Error("RenderLayers with a region past the layers: got nil error, want error")
 	}
 

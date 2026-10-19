@@ -73,8 +73,13 @@ func TestJSONShapes(t *testing.T) {
 		},
 		{
 			name: "Settings",
-			give: settingsJSON{Level: 0.5, EDR: true, Gamma: 2.2, FontSize: 21, Accent: "#112233", Images: 2},
-			want: `{"level":0.5,"edr":true,"tint":0,"gamma":2.2,"fontSize":21,"spread":0,"accent":"#112233","images":2}`,
+			give: settingsJSON{Level: 0.5, EDR: true, Gamma: 2.2, FontSize: 21, Accent: "#112233", Pictures: 1, BookColors: true},
+			want: `{"level":0.5,"edr":true,"tint":0,"gamma":2.2,"fontSize":21,"spread":0,"accent":"#112233","pictures":1,"bookColors":true}`,
+		},
+		{
+			name: "Picture",
+			give: pictureJSON{Page: 4, Index: 1, Rect: rectJSON{X: 1, Y: 2, Width: 3, Height: 4}},
+			want: `{"page":4,"index":1,"rect":{"x":1,"y":2,"width":3,"height":4}}`,
 		},
 		{
 			name: "Paragraph",
