@@ -3,6 +3,8 @@ import SwiftUI
 /// Theme holds the design tokens. Views take colors, spacing, radii and type
 /// from here, so the look can be tuned in one place. The accent is the one
 /// token the user picks; views read it from the environment (\.accent).
+/// Hairlines and secondary text get stronger when Increase Contrast is on in
+/// the Accessibility settings.
 enum Theme {
     // Surfaces, from the window background up. The page itself is pure
     // black so the EDR text is the only light there.
@@ -16,13 +18,13 @@ enum Theme {
     static let hover = Color.white.opacity(0.05)
     static let pressed = Color.white.opacity(0.08)
     static let selected = Color.white.opacity(0.09)
-    static let border = Color.white.opacity(0.07)
+    static let border = contrasting(Color.white.opacity(0.07), increased: Color.white.opacity(0.32))
 
     // Text.
     static let text = Color(hex: 0xE8E8EB)
-    static let secondary = Color(hex: 0x8E8E95)
+    static let secondary = contrasting(Color(hex: 0x8E8E95), increased: Color(hex: 0xC4C4CA))
     // Tertiary still meets WCAG AA (4.5:1) on the canvas and the sidebar.
-    static let tertiary = Color(hex: 0x7C7C84)
+    static let tertiary = contrasting(Color(hex: 0x7C7C84), increased: Color(hex: 0xADADB4))
 
     // Accent: a flat red, warm like a reading lamp. Users can change it.
     static let defaultAccent = Color(hex: 0xE5484D)
@@ -70,6 +72,27 @@ enum Theme {
     static let heading = Font.system(size: 22, weight: .bold, design: .serif)
 
     static let hoverAnimation = Animation.easeOut(duration: 0.14)
+
+    /// Returns a color that is increased while Increase Contrast is on and
+    /// normal otherwise. AppKit resolves it each time it draws.
+    static func contrasting(_ normal: Color, increased: Color,
+                            when isIncreased: @escaping (NSAppearance) -> Bool = isContrastIncreased(for:)) -> Color {
+        let normal = NSColor(normal)
+        let increased = NSColor(increased)
+        return Color(nsColor: NSColor(name: nil) { appearance in
+            isIncreased(appearance) ? increased : normal
+        })
+    }
+
+    /// Reports whether colors drawn with appearance should have more
+    /// contrast. AppKit hands out the high-contrast appearances only while
+    /// the setting is on, so both say the same.
+    static func isContrastIncreased(for appearance: NSAppearance) -> Bool {
+        let dark = appearance.bestMatch(from: [.darkAqua, .accessibilityHighContrastDarkAqua])
+        let light = appearance.bestMatch(from: [.aqua, .accessibilityHighContrastAqua])
+        return NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+            || dark == .accessibilityHighContrastDarkAqua || light == .accessibilityHighContrastAqua
+    }
 }
 
 extension Color {

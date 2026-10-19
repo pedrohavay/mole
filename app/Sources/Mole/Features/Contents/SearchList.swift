@@ -122,7 +122,7 @@ struct SearchList: View {
             }
             .onChange(of: tab.currentHit) { _, index in
                 guard let index else { return }
-                withAnimation { proxy.scrollTo(index, anchor: .center) }
+                Motion.animate(.default) { proxy.scrollTo(index, anchor: .center) }
             }
         }
     }

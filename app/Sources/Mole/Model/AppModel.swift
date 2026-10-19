@@ -348,7 +348,7 @@ final class AppModel {
     /// Shows page of the side panel of the open book.
     func showPanel(_ page: PanelPage) {
         panelPage = page
-        withAnimation(.easeInOut(duration: 0.2)) { showContents = true }
+        Motion.animate { showContents = true }
     }
 
     /// Opens the search of the open book with its field focused.

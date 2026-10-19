@@ -2,11 +2,12 @@ import SwiftUI
 
 /// CoverCell is one book of the grid: a click selects it, a double click
 /// opens it, and the options button or a secondary click shows its menu. The
-/// cover lifts while the pointer is over it.
+/// cover lifts while the pointer is over it, unless Reduce Motion is on.
 @MainActor
 struct CoverCell: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accent) private var accent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let book: Book
     let selected: Bool
     /// OnSelect runs after a click selects the book.
@@ -56,6 +57,7 @@ struct CoverCell: View {
 
     @ViewBuilder private var cover: some View {
         let shape = RoundedRectangle(cornerRadius: 3, style: .continuous)
+        let lifted = hovering && !reduceMotion
         Group {
             if let image = model.covers[book.id] {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
@@ -67,10 +69,10 @@ struct CoverCell: View {
         }
         .clipShape(shape)
         .overlay(shape.strokeBorder(Color.white.opacity(hovering ? 0.14 : 0.06)))
-        .shadow(color: .black.opacity(hovering ? 0.75 : 0.55), radius: hovering ? 14 : 8, y: hovering ? 7 : 3)
+        .shadow(color: .black.opacity(lifted ? 0.75 : 0.55), radius: lifted ? 14 : 8, y: lifted ? 7 : 3)
         .overlay(shape.strokeBorder(selected ? accent : .clear, lineWidth: 2.5).padding(-4))
-        .scaleEffect(hovering ? 1.03 : 1, anchor: .bottom)
-        .offset(y: hovering ? -2 : 0)
+        .scaleEffect(lifted ? 1.03 : 1, anchor: .bottom)
+        .offset(y: lifted ? -2 : 0)
     }
 
     private var options: some View {

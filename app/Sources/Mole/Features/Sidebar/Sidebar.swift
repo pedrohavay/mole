@@ -33,7 +33,7 @@ struct Sidebar: View {
                 .foregroundStyle(Theme.secondary)
             Spacer()
             IconButton(symbol: "sidebar.left", help: L10n.text("sidebar.hide")) {
-                withAnimation(.easeInOut(duration: 0.2)) { model.showSidebar = false }
+                Motion.animate { model.showSidebar = false }
             }
         }
         .padding(.horizontal, Theme.Space.s)

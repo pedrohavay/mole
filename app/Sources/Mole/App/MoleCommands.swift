@@ -66,11 +66,11 @@ struct MoleCommands: Commands {
         }
         CommandGroup(replacing: .sidebar) {
             Button(state?.showSidebar == false ? L10n.text("sidebar.show") : L10n.text("sidebar.hide"),
-                   action: perform { model in withAnimation(.easeInOut(duration: 0.2)) { model.showSidebar.toggle() } })
+                   action: perform { model in Motion.animate { model.showSidebar.toggle() } })
                 .keyboardShortcut("s", modifiers: [.control, .command])
                 .disabled(state == nil)
             Button(state?.showContents == true ? L10n.text("contents.hide") : L10n.text("contents.show"),
-                   action: perform { model in withAnimation(.easeInOut(duration: 0.2)) { model.showContents.toggle() } })
+                   action: perform { model in Motion.animate { model.showContents.toggle() } })
                 .keyboardShortcut("c", modifiers: [.option, .command])
                 .disabled(state?.hasBook != true)
             Button(state?.isFullScreen == true ? L10n.text("menu.exitFullScreen") : L10n.text("menu.enterFullScreen"),

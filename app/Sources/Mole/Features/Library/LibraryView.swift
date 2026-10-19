@@ -105,7 +105,7 @@ struct LibraryView: View {
             }
             .onChange(of: model.selectedBook) { _, id in
                 guard let id else { return }
-                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id) }
+                Motion.animate(.easeOut(duration: 0.2)) { proxy.scrollTo(id) }
             }
         }
         .focusable()
