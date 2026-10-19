@@ -2,9 +2,33 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"reflect"
+	"runtime"
 	"testing"
+
+	"mole/core/internal/bookfile"
 )
+
+func TestLastErrorKind(t *testing.T) {
+	// The last error belongs to the OS thread.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	tests := []struct {
+		give error
+		want int
+	}{
+		{give: fmt.Errorf("import /b.mobi: %w", bookfile.ErrDRM), want: errorKindDRM},
+		{give: errors.New("cannot read"), want: errorKindOther},
+	}
+	for _, tt := range tests {
+		fail(tt.give)
+		if got := int(mole_last_error_kind()); got != tt.want {
+			t.Errorf("mole_last_error_kind after fail(%v) = %d, want %d", tt.give, got, tt.want)
+		}
+	}
+}
 
 func TestUTF16Len(t *testing.T) {
 	for _, tt := range []struct {

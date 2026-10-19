@@ -125,7 +125,10 @@ static void set_err(fz_context *ctx, char *err, int errlen) {
     }
 }
 
-md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err, int errlen) {
+// open_document opens a document from the file at path or, when path is
+// NULL, from a copy of the len bytes at data, with magic naming their type.
+static md_doc *open_document(const char *path, const unsigned char *data, size_t len, const char *magic,
+                             const char *user_css, size_t limit, char *err, int errlen) {
     md_budget *budget = malloc(sizeof *budget);
     if (budget == NULL) {
         snprintf(err, (size_t)errlen, "out of memory");
@@ -142,13 +145,23 @@ md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err,
     fz_set_warning_callback(ctx, quiet, NULL);
     fz_set_error_callback(ctx, quiet, NULL);
     fz_document *doc = NULL;
+    fz_buffer *buf = NULL;
     fz_var(doc);
+    fz_var(buf);
     fz_try(ctx) {
         fz_register_document_handlers(ctx);
         if (user_css != NULL) {
             fz_set_user_css(ctx, user_css);
         }
-        doc = fz_open_document(ctx, path);
+        if (path != NULL) {
+            doc = fz_open_document(ctx, path);
+        } else {
+            buf = fz_new_buffer_from_copied_data(ctx, data, len);
+            doc = fz_open_document_with_buffer(ctx, magic, buf);
+        }
+    }
+    fz_always(ctx) {
+        fz_drop_buffer(ctx, buf);
     }
     fz_catch(ctx) {
         set_err(ctx, err, errlen);
@@ -168,6 +181,15 @@ md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err,
     d->doc = doc;
     d->budget = budget;
     return d;
+}
+
+md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err, int errlen) {
+    return open_document(path, NULL, 0, NULL, user_css, limit, err, errlen);
+}
+
+md_doc *md_open_buffer(const unsigned char *data, size_t len, const char *magic, const char *user_css,
+                       size_t limit, char *err, int errlen) {
+    return open_document(NULL, data, len, magic, user_css, limit, err, errlen);
 }
 
 static void drop_style(fz_context *ctx, md_image_style *style) {

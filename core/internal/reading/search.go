@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
+	"mole/core/internal/bookfile"
 	"mole/core/internal/mupdf"
 )
 
@@ -286,7 +287,7 @@ func (b *bookText) run(path string) {
 }
 
 func (b *bookText) extract(path string) error {
-	doc, err := mupdf.Open(path, userCSS)
+	doc, err := bookfile.Open(path, userCSS)
 	if err != nil {
 		return err
 	}

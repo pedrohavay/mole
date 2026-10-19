@@ -2,12 +2,14 @@ package importer
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"mole/core/internal/bookfile"
 	"mole/core/internal/library"
 	"mole/core/internal/testbook"
 )
@@ -81,6 +83,47 @@ func TestImport(t *testing.T) {
 	}
 }
 
+func TestImportFormats(t *testing.T) {
+	store := openStore(t)
+	mobi := testbook.MOBI{Title: "Mobi Book", Author: "Ana", HTML: "<p>Hello.</p>"}.Write(t)
+	prc := filepath.Join(filepath.Dir(mobi), "Old Book.prc")
+	if err := os.Rename(mobi, prc); err != nil {
+		t.Fatalf("Rename error: %v", err)
+	}
+	tests := []struct {
+		name, path, title, author, ext string
+	}{
+		{name: "PRC", path: prc, title: "Mobi Book", author: "Ana", ext: ".prc"},
+		{name: "FB2", path: testbook.FB2{Title: "Fb Book", Author: [2]string{"Rui", "Dias"}, Sections: []string{"<p>Hi.</p>"}}.Write(t), title: "Fb Book", author: "Rui Dias", ext: ".fb2"},
+		{name: "Text", path: testbook.File(t, "Plain Words.txt", []byte("Hello.\n")), title: "Plain Words", ext: ".txt"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, err := Import(store, tt.path, time.Unix(1, 0))
+			if err != nil {
+				t.Fatalf("Import error: %v", err)
+			}
+			if b.Title != tt.title || b.Author != tt.author || filepath.Ext(b.Path) != tt.ext {
+				t.Errorf("Import = %q by %q at %s, want %q by %q in a %s copy", b.Title, b.Author, filepath.Base(b.Path), tt.title, tt.author, tt.ext)
+			}
+			if full, err := store.Book(b.ID); err != nil || len(full.Cover) == 0 {
+				t.Errorf("cover = %d bytes, %v; want the first page", len(full.Cover), err)
+			}
+		})
+	}
+}
+
+func TestImportRejectsDRM(t *testing.T) {
+	store := openStore(t)
+	path := testbook.MOBI{Title: "Locked", HTML: "<p>Secret.</p>", Encrypted: true}.Write(t)
+	if _, err := Import(store, path, time.Unix(1, 0)); !errors.Is(err, bookfile.ErrDRM) {
+		t.Errorf("Import of a protected MOBI = %v, want bookfile.ErrDRM", err)
+	}
+	if names := booksIn(t, store.BooksDir()); len(names) != 0 {
+		t.Errorf("a refused import left %v in the Books directory", names)
+	}
+}
+
 func TestImportRejectsNonEPUB(t *testing.T) {
 	store := openStore(t)
 	path := filepath.Join(t.TempDir(), "notes.epub")
@@ -100,15 +143,16 @@ func TestImportRejectsNonEPUB(t *testing.T) {
 
 func TestCopyName(t *testing.T) {
 	long := strings.Repeat("ç", 80) // 160 bytes
-	tests := []struct{ give, want string }{
-		{give: "/d/Book.epub", want: "Book-*.epub"},
-		{give: "/d/a*b.epub", want: "ab-*.epub"},
-		{give: "/d/.epub", want: "book-*.epub"},
-		{give: "/d/" + long + ".epub", want: strings.Repeat("ç", maxNameLength/2) + "-*.epub"},
+	tests := []struct{ give, ext, want string }{
+		{give: "/d/Book.epub", ext: ".epub", want: "Book-*.epub"},
+		{give: "/d/a*b.epub", ext: ".epub", want: "ab-*.epub"},
+		{give: "/d/.epub", ext: ".epub", want: "book-*.epub"},
+		{give: "/d/" + long + ".epub", ext: ".epub", want: strings.Repeat("ç", maxNameLength/2) + "-*.epub"},
+		{give: "/d/Notes.TXT", ext: ".txt", want: "Notes-*.txt"},
 	}
 	for _, tt := range tests {
-		if got := copyName(tt.give); got != tt.want {
-			t.Errorf("copyName(%q) = %q, want %q", tt.give, got, tt.want)
+		if got := copyName(tt.give, tt.ext); got != tt.want {
+			t.Errorf("copyName(%q, %q) = %q, want %q", tt.give, tt.ext, got, tt.want)
 		}
 	}
 }

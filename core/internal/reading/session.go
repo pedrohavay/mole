@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 
+	"mole/core/internal/bookfile"
 	"mole/core/internal/mupdf"
 )
 
@@ -77,7 +78,7 @@ type Session struct {
 
 // Open opens the book at path; the first Layout shows the page at start.
 func Open(path string, start Location) (*Session, error) {
-	doc, err := mupdf.Open(path, userCSS)
+	doc, err := bookfile.Open(path, userCSS)
 	if err != nil {
 		return nil, err
 	}

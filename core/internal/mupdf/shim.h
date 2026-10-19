@@ -14,6 +14,12 @@ typedef struct md_doc md_doc;
 // message into err on failure.
 md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err, int errlen);
 
+// md_open_buffer is md_open for a document held in memory: it opens a copy
+// of the len bytes at data, whose type magic names by extension or MIME
+// type (for example "html").
+md_doc *md_open_buffer(const unsigned char *data, size_t len, const char *magic, const char *user_css,
+                       size_t limit, char *err, int errlen);
+
 // md_close releases the document and its context.
 void md_close(md_doc *d);
 

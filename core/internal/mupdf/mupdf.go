@@ -1,6 +1,7 @@
-// Package mupdf wraps the parts of MuPDF the reader needs: reflowing an EPUB
-// to a page size, rendering pages as coverage masks or PNG images, positions
-// that survive a relayout and the text of a page.
+// Package mupdf wraps the parts of MuPDF the reader needs: reflowing a book
+// (EPUB, MOBI, FB2 or HTML) to a page size, rendering pages as coverage
+// masks or PNG images, positions that survive a relayout and the text of a
+// page.
 //
 // Every Document has its own MuPDF context, so different documents may be
 // used on different goroutines at the same time.
@@ -55,6 +56,29 @@ func open(path, userCSS string, limit int) (*Document, error) {
 	d := C.md_open(cpath, ccss, C.size_t(limit), cbuf(msg), errLen)
 	if d == nil {
 		return nil, fmt.Errorf("open %s: %s", path, cstr(msg))
+	}
+	return &Document{d: d}, nil
+}
+
+// OpenBuffer opens a document held in data, whose type magic names by
+// extension or MIME type, such as "html". The document keeps a copy of data
+// and is otherwise like one opened with Open.
+func OpenBuffer(data []byte, magic, userCSS string) (*Document, error) {
+	if len(data) == 0 {
+		return nil, errors.New("open: empty document")
+	}
+	cmagic := C.CString(magic)
+	defer C.free(unsafe.Pointer(cmagic))
+	var ccss *C.char
+	if userCSS != "" {
+		ccss = C.CString(userCSS)
+		defer C.free(unsafe.Pointer(ccss))
+	}
+	msg := make([]byte, errLen)
+	d := C.md_open_buffer((*C.uchar)(unsafe.Pointer(&data[0])), C.size_t(len(data)), cmagic, ccss,
+		C.size_t(memoryLimit), cbuf(msg), errLen)
+	if d == nil {
+		return nil, fmt.Errorf("open %s document: %s", magic, cstr(msg))
 	}
 	return &Document{d: d}, nil
 }
