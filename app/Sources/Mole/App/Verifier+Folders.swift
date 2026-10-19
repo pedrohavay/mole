@@ -1,7 +1,8 @@
 import AppKit
 
 /// The folder check of the Verifier, run with `--verify-folder tree`. The
-/// tree holds two folders of EPUB fixtures: Library, with at least three
+/// tree holds two folders of book fixtures, in any format Mole reads
+/// (BookFiles): Library, with at least three
 /// books in subfolders, which is imported with collections and kept in
 /// sync; and Spare, with at least two books used to change Library while
 /// the app runs. The check moves, renames, rewrites and deletes files in
@@ -9,8 +10,8 @@ import AppKit
 extension Verifier {
     func verifyFolders(_ tree: String) {
         let root = FolderWatcher.realPath((tree as NSString).appendingPathComponent("Library"))
-        let spare = Self.epubs(in: (tree as NSString).appendingPathComponent("Spare"))
-        let originals = Self.epubs(in: root)
+        let spare = Self.books(in: (tree as NSString).appendingPathComponent("Spare"))
+        let originals = Self.books(in: root)
         guard originals.count >= 3, spare.count >= 2 else {
             report("the folder check needs three books in Library and two in Spare")
             return NSApp.terminate(nil)
@@ -76,7 +77,8 @@ extension Verifier {
     /// Renames, rewrites and deletes three books of the library, checking
     /// after each that no book is added and the right one changes.
     private func changeFiles(_ originals: [String], _ spare: [String]) {
-        let renamed = originals[0].replacingOccurrences(of: ".epub", with: " (renamed).epub")
+        let original = originals[0] as NSString
+        let renamed = original.deletingPathExtension + " (renamed)." + original.pathExtension
         guard let moved = book(at: originals[0]), let changed = book(at: originals[1]),
               let removed = book(at: originals[2]) else {
             report("the books of the fixtures are not in the library")
@@ -173,10 +175,10 @@ extension Verifier {
         after(0.2) { waitFor(what, timeout: timeout, started: started, condition, then: next) }
     }
 
-    /// Returns the EPUB files under folder, sorted by path.
-    private static func epubs(in folder: String) -> [String] {
+    /// Returns the books under folder, sorted by path.
+    private static func books(in folder: String) -> [String] {
         let files = FileManager.default.enumerator(atPath: folder)?.allObjects as? [String] ?? []
-        return files.filter { $0.lowercased().hasSuffix(".epub") && !$0.hasPrefix(".") }
+        return files.filter { BookFiles.accepts($0) && !$0.hasPrefix(".") }
             .map { (folder as NSString).appendingPathComponent($0) }
             .sorted()
     }

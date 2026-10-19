@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"mole/core/internal/bookfile"
 	"mole/core/internal/library"
 	"mole/core/internal/testbook"
 )
@@ -68,7 +70,7 @@ func TestImportFolder(t *testing.T) {
 	writeBook(t, filepath.Join(root, "Essays"), "b.EPUB", "Essay B")
 	writeBook(t, filepath.Join(root, "Essays", "Short"), "c.epub", "Short C")
 	writeBook(t, filepath.Join(root, ".hidden"), "h.epub", "Hidden")
-	writeBook(t, filepath.Join(root, "Empty"), "notes.txt", "Not a book")
+	writeBook(t, filepath.Join(root, "Empty"), "notes.md", "Not a book")
 	if err := os.WriteFile(filepath.Join(root, "broken.epub"), []byte("not a zip"), 0o644); err != nil {
 		t.Fatalf("WriteFile error: %v", err)
 	}
@@ -121,6 +123,50 @@ func mustCollection(t *testing.T, store *library.Store, name string) library.Col
 	}
 	t.Fatalf("no collection named %q", name)
 	return library.Collection{}
+}
+
+// moveInto moves the file at path into dir under name, creating dir.
+func moveInto(t *testing.T, path, dir, name string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll error: %v", err)
+	}
+	if err := os.Rename(path, filepath.Join(dir, name)); err != nil {
+		t.Fatalf("Rename error: %v", err)
+	}
+}
+
+func TestImportFolderFormats(t *testing.T) {
+	store := openStore(t)
+	root := filepath.Join(t.TempDir(), "Library")
+	moveInto(t, testbook.MOBI{Title: "Mobi", HTML: "<p>M.</p>"}.Write(t), root, "m.mobi")
+	moveInto(t, testbook.PalmDOC{Title: "Palm", Text: "P.\n"}.Write(t), root, "p.prc")
+	moveInto(t, testbook.FB2{Title: "Fb", Sections: []string{"<p>F.</p>"}}.Write(t), filepath.Join(root, "Shelf"), "f.fb2")
+	moveInto(t, testbook.File(t, "x", []byte("Title: Text\n\nT.\n")), filepath.Join(root, "Shelf"), "t.txt")
+	moveInto(t, testbook.MOBI{Title: "Locked", HTML: "<p>L.</p>", Encrypted: true}.Write(t), root, "locked.mobi")
+
+	r, err := ImportFolder(store, root, FolderOptions{Collections: true}, time.Unix(1, 0))
+	if err != nil {
+		t.Fatalf("ImportFolder error: %v", err)
+	}
+	if r.Found != 5 || len(r.Added) != 4 || len(r.Failed) != 1 || !errors.Is(r.Failed[0].Err, bookfile.ErrDRM) {
+		t.Errorf("ImportFolder = %+v, want 5 found, 4 added and locked.mobi refused for DRM", r)
+	}
+	if got, want := bookTitles(t, store), []string{"Fb", "Mobi", "Palm", "Text"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("books = %q, want %q", got, want)
+	}
+	if got, want := collectionsByName(t, store), map[string][]string{"Library": {"Mobi", "Palm"}, "Shelf": {"Fb", "Text"}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("collections = %v, want %v", got, want)
+	}
+	books, err := store.Books()
+	if err != nil {
+		t.Fatalf("Books error: %v", err)
+	}
+	for _, b := range books {
+		if ext := filepath.Ext(b.Path); ext != filepath.Ext(b.OriginalPath) {
+			t.Errorf("copy of %s is %s, want the original's extension", b.OriginalPath, filepath.Base(b.Path))
+		}
+	}
 }
 
 func TestImportFolderRejects(t *testing.T) {

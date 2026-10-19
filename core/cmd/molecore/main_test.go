@@ -3,13 +3,35 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
+	"runtime"
 	"testing"
 	"time"
 
+	"mole/core/internal/bookfile"
 	"mole/core/internal/importer"
 	"mole/core/internal/library"
 )
+
+func TestLastErrorKind(t *testing.T) {
+	// The last error belongs to the OS thread.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	tests := []struct {
+		give error
+		want int
+	}{
+		{give: fmt.Errorf("import /b.mobi: %w", bookfile.ErrDRM), want: errorKindDRM},
+		{give: errors.New("cannot read"), want: errorKindOther},
+	}
+	for _, tt := range tests {
+		fail(tt.give)
+		if got := int(mole_last_error_kind()); got != tt.want {
+			t.Errorf("mole_last_error_kind after fail(%v) = %d, want %d", tt.give, got, tt.want)
+		}
+	}
+}
 
 func TestUTF16Len(t *testing.T) {
 	for _, tt := range []struct {
@@ -68,8 +90,13 @@ func TestJSONShapes(t *testing.T) {
 		{
 			name: "FolderResult",
 			give: toFolderResultJSON(importer.FolderResult{Folder: 1, Found: 3, Added: []int64{9},
-				Failed: []importer.Failure{{Path: "/books/x.epub", Err: errors.New("not a zip")}}}),
-			want: `{"folder":1,"found":3,"added":[9],"updated":[],"missing":[],"failed":[{"path":"/books/x.epub","error":"not a zip"}]}`,
+				Failed: []importer.Failure{
+					{Path: "/books/x.epub", Err: errors.New("not a zip")},
+					{Path: "/books/y.mobi", Err: fmt.Errorf("import /books/y.mobi: %w", bookfile.ErrDRM)},
+				}}),
+			want: `{"folder":1,"found":3,"added":[9],"updated":[],"missing":[],"failed":[` +
+				`{"path":"/books/x.epub","error":"not a zip","drm":false},` +
+				`{"path":"/books/y.mobi","error":"import /books/y.mobi: this book is protected by DRM","drm":true}]}`,
 		},
 		{
 			name: "Settings",

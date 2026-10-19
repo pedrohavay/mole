@@ -111,7 +111,15 @@ $(CORE_LIB): $(CORE_SOURCES) core/go.mod core/go.sum $(MUPDF_LIBS) core/build/mu
 
 SWIFT_FLAGS := -c $(CONFIG)
 
+# SwiftPM does not count the core library among the inputs of what it links,
+# so a change to the core alone would not reach the app or the tests.
+# relink removes the products older than the library, and SwiftPM links them
+# again.
+relink = @for product in $(1); do \
+	if [ -e "$$product" ] && [ $(CORE_LIB) -nt "$$product" ]; then rm -f "$$product"; fi; done
+
 app: core
+	$(call relink,app/.build/$(CONFIG)/Mole)
 	cd app && $(SWIFT) build $(SWIFT_FLAGS)
 
 bundle: app
@@ -132,6 +140,7 @@ test-core: $(MUPDF_LIBS)
 	cd core && $(GO) test ./...
 
 test-app: core
+	$(call relink,app/.build/debug/MolePackageTests.xctest/Contents/MacOS/MolePackageTests)
 	cd app && $(SWIFT) test
 
 lint: $(MUPDF_LIBS)

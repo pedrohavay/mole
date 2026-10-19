@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"mole/core/internal/bookfile"
 	"mole/core/internal/mupdf"
 )
 
@@ -51,9 +52,10 @@ func (l LineSpacing) lineDistance() float64 {
 	return 0
 }
 
-// open opens the book at path with the style sheet of t.
+// open opens the book at path, in any format bookfile reads, with the style
+// sheet of t.
 func (t Typography) open(path string) (*mupdf.Document, error) {
-	doc, err := mupdf.Open(path, t.css())
+	doc, err := bookfile.Open(path, t.css())
 	if err != nil {
 		return nil, err
 	}

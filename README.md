@@ -29,6 +29,9 @@ Mole is in early development and has no release builds yet.
 - Books open at their final brightness. A one-point EDR layer keeps the
   headroom raised while Mole is open, so the text does not fade in.
 - EPUB layout and rendering by MuPDF, one or two pages side by side.
+- MOBI, PRC, FB2 and plain text books as well. Text files get paragraphs
+  and chapter headings, whether they are UTF-8 or Windows-1252, and a book
+  protected by DRM is refused with a message that says so.
 - Pictures in their own colors, never brighter than SDR white. At night
   diagrams are inverted so their lines glow while photos keep their colors;
   pictures can also show as printed, or not at all. Click one to see it full
@@ -88,13 +91,14 @@ notarized releases.
 
 ## Usage
 
-Add books with File > Add Books (⌘O), by dropping EPUB files on the library,
-or with Open With > Mole in Finder. Mole copies each book into its library,
-so moving or deleting the original file does not break anything. A file
-added again after it changed, or after it was renamed, updates its book
-instead of adding a second one. Double-click a cover to open the book.
+Add books with File > Add Books (⌘O), by dropping EPUB, MOBI, PRC, FB2 or
+TXT files on the library, or with Open With > Mole in Finder. Mole copies
+each book into its library, so moving or deleting the original file does
+not break anything. A file added again after it changed, or after it was
+renamed, updates its book instead of adding a second one. Double-click a
+cover to open the book.
 
-Choose or drop a folder to add every EPUB in it and in its subfolders. Mole
+Choose or drop a folder to add every book in it and in its subfolders. Mole
 then asks whether each folder that holds books should become a collection,
 and whether to keep the folder in sync. A synced folder is watched while
 Mole runs and checked again at launch; Settings > General lists the synced
@@ -368,13 +372,14 @@ halves, how the light is produced, and the findings behind those choices.
 ```
 core/                 Go: the library, layout and rendering
   cmd/molecore/       the C API the app links against (c-archive)
+  internal/bookfile/  book formats: detection, metadata, covers, opening
   internal/epub/      EPUB metadata and covers
   internal/importer/  adding books to the library
   internal/library/   the SQLite library: books, settings, annotations
   internal/mupdf/     cgo binding to MuPDF
   internal/reading/   page geometry, text anchors, search and rendering
   internal/session/   an open book and how its position is saved
-  internal/testbook/  EPUB fixtures for the tests
+  internal/testbook/  EPUB, MOBI, PRC and FB2 fixtures for the tests
 app/                  Swift: the macOS app (SwiftPM)
   Sources/MoleCore/   module map for the core's generated header
   Sources/Mole/

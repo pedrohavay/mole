@@ -35,7 +35,8 @@ macOS of the machine that built it and change with every upgrade.
   released with `mole_free`. The exception is the layers a session renders
   (the coverage mask, the text colors and the pictures), which the session
   owns and reuses until its next render, layout or close.
-- On failure a function returns 0 or NULL and `mole_last_error` explains why.
+- On failure a function returns 0 or NULL and `mole_last_error` explains why;
+  `mole_last_error_kind` tells a book protected by DRM from other failures.
 - Library calls (`mole_library_*`, import included) may come from any
   thread, one at a time per handle; a session is used from one thread at a
   time. The last error belongs to the calling thread. The app uses its main
@@ -45,6 +46,55 @@ macOS of the machine that built it and change with every upgrade.
 `app/Sources/Mole/Bridge` wraps these conventions: `CoreCall` holds the error
 and memory rules, `Library` and `Session` are the handle classes, and a
 `Session` closes (saving the position) when it is released.
+
+## Book formats
+
+Package `bookfile` knows the formats. It tells a file's format from its
+content first (a ZIP archive, a Palm database of type `BOOKMOBI` or
+`TEXtREAd`, an XML document with a `FictionBook` root) and from its
+extension only when the content has no such mark, which is the case of
+EPUB files that MuPDF would reject anyway and of plain text. The library's
+copy keeps the extension, so MuPDF picks the same handler when the book is
+opened.
+
+MuPDF reads MOBI, PRC and FB2 itself, as one HTML document whose pictures
+(a MOBI's image records, an FB2's `binary` elements) are images like an
+EPUB's, so they take the same color and picture layers. It makes them
+books of a single chapter: anchors all have chapter 0, and a relayout
+measures every page up to the reader's place (about 0.3 s for a book of a
+thousand pages). Plain text goes through Go first: it is decoded as UTF-16
+when a byte order mark says so, as UTF-8 when it is valid UTF-8, and as
+Windows-1252 otherwise, then turned into HTML paragraphs (wrapped lines are
+joined, short lines such as verse keep their breaks, and lines like
+"CHAPTER IV" become headings for the table of contents) and opened from
+memory.
+
+Metadata comes from each format's own fields: the OPF package of an EPUB,
+the EXTH records of a MOBI (title, author and cover image), the
+`description` of an FB2 with its `binary` cover, and the `Title:` and
+`Author:` lines of a Project Gutenberg text. MuPDF's title fills a gap, and
+the file name is the last resort. A book without a cover gets its first
+page.
+
+MuPDF ignores the encryption field of a MOBI header and would show the
+encrypted text, so `bookfile` checks it on import and on open and fails
+with `ErrDRM`. The C API reports that kind of failure through
+`mole_last_error_kind`, and the app explains it in the user's language.
+
+An FB2 with a cover would also show an empty page between the cover and
+the text (see the next section), in the middle of its single chapter, so
+`bookfile` adds styles to FB2 books that remove the margins causing it.
+
+## Empty pages at the start of a chapter
+
+MuPDF breaks the page before an element only when the element is below the
+top of the page, and it moves the top margins of a chapter's first elements
+up to the chapter's root. A chapter whose first element breaks the page, a
+common style for chapter titles, therefore starts with an empty page. After
+each layout the shim checks the first pages of every chapter of a
+reflowable book and leaves out those that draw nothing; every page number
+in the core counts only the pages shown. CSS cannot do it, because the
+collapsed margin comes from the book's own elements.
 
 ## Collections and synced folders
 
@@ -63,8 +113,9 @@ are stored with symbolic links resolved, the way FSEvents reports them, so
 `/tmp/a.epub` and `/private/tmp/a.epub` are one file.
 
 `importer.ImportFolder` walks a folder, skipping hidden files and the
-library's own `Books` folder, imports each EPUB and, when asked, puts it in
-the collection of its folder. A watched folder is stored in
+library's own `Books` folder, imports each book in a format of
+`bookfile` (by its extension) and, when asked, puts it in the collection of
+its folder. A book protected by DRM is reported as such among the failures. A watched folder is stored in
 `watched_folders`; `importer.Sync` imports what is new or changed in it and
 marks the books whose file is gone (`books.missing`) instead of removing
 them. Collections are only filled with books a sync touched, so a book the
@@ -186,9 +237,10 @@ not offer it. MuPDF does not hyphenate either: it breaks words only at the
 soft hyphens a book has, and has no CSS `hyphens`, so justified text can
 space words widely.
 
-A new typography opens the book again before it is laid out. MuPDF keeps
-the chapters it parsed with the old style sheet and its page counts, so
-giving the open document a new style sheet would show stale styles. Anchors
+A new typography opens the book again, through `bookfile` so that every
+format opens as it did first, before it is laid out. MuPDF keeps the
+chapters it parsed with the old style sheet and its page counts, so giving
+the open document a new style sheet would show stale styles. Anchors
 do not depend on the typography, so the reader stays at the same text, and
 the background copy that searches read stays valid.
 

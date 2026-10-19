@@ -6,8 +6,10 @@ package main
 import "C"
 
 import (
+	"errors"
 	"time"
 
+	"mole/core/internal/bookfile"
 	"mole/core/internal/importer"
 	"mole/core/internal/library"
 )
@@ -41,6 +43,7 @@ type folderJSON struct {
 type failureJSON struct {
 	Path  string `json:"path"`
 	Error string `json:"error"`
+	DRM   bool   `json:"drm"` // the book is protected by DRM
 }
 
 type folderResultJSON struct {
@@ -62,7 +65,7 @@ func toFolderResultJSON(r importer.FolderResult) folderResultJSON {
 	out := folderResultJSON{Folder: r.Folder, Found: r.Found, Added: ids(r.Added), Updated: ids(r.Updated),
 		Missing: ids(r.Missing), Failed: make([]failureJSON, 0, len(r.Failed))}
 	for _, f := range r.Failed {
-		out.Failed = append(out.Failed, failureJSON{Path: f.Path, Error: f.Err.Error()})
+		out.Failed = append(out.Failed, failureJSON{Path: f.Path, Error: f.Err.Error(), DRM: errors.Is(f.Err, bookfile.ErrDRM)})
 	}
 	return out
 }
@@ -206,14 +209,14 @@ func mole_library_folders(lib C.int64_t) *C.char {
 	return jsonString(out)
 }
 
-// mole_library_import_folder imports every EPUB in a folder and its
-// subfolders. options is JSON {"collections":bool,"watch":bool}: collections
+// mole_library_import_folder imports every book (EPUB, MOBI, PRC, FB2 or
+// plain text) in a folder and its subfolders. options is JSON {"collections":bool,"watch":bool}: collections
 // puts each book in a collection named after its folder, and watch keeps
 // the folder in sync from then on (see mole_library_sync_folder). It
 // returns JSON {"folder","found","added","updated","missing","failed"}:
 // the watched folder's ID or 0, how many files were found, the IDs of the
 // books added, updated and marked missing, and the files that failed as
-// {"path","error"}. It may run on a background thread.
+// {"path","error","drm"}, drm being true for a book protected by DRM. It may run on a background thread.
 //
 //export mole_library_import_folder
 func mole_library_import_folder(lib C.int64_t, path, options *C.char) *C.char {

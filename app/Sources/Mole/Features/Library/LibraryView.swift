@@ -2,7 +2,7 @@ import SwiftUI
 
 /// LibraryView is the grid of covers of the selected shelf or collection.
 /// It takes the keyboard: arrows move the selection, Return opens and
-/// Delete removes. EPUB files and folders dropped on it are added to the
+/// Delete removes. Books and folders dropped on it are added to the
 /// library.
 @MainActor
 struct LibraryView: View {

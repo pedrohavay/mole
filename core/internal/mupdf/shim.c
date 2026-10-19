@@ -94,6 +94,13 @@ struct md_doc {
     md_font_files fonts;
     md_image_style styles[MD_IMAGE_STYLES];
     int next_style; // slot to reuse when all are taken
+
+    // The pages shown, set by each layout: MuPDF's pages less the blank
+    // pages that open a chapter (see md_layout). Pages are numbered among
+    // the pages shown everywhere in this API.
+    int chapters;
+    int *skip;  // blank pages left out at the start of each chapter
+    int *first; // number of each chapter's first page shown, then the page count
 };
 
 // MuPDF prints warnings and errors to stderr by default; the Go side reports
@@ -132,7 +139,10 @@ static void set_err(fz_context *ctx, char *err, int errlen) {
     }
 }
 
-md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err, int errlen) {
+// open_document opens a document from the file at path or, when path is
+// NULL, from a copy of the len bytes at data, with magic naming their type.
+static md_doc *open_document(const char *path, const unsigned char *data, size_t len, const char *magic,
+                             const char *user_css, size_t limit, char *err, int errlen) {
     md_doc *d = calloc(1, sizeof *d);
     md_budget *budget = malloc(sizeof *budget);
     if (d == NULL || budget == NULL) {
@@ -154,13 +164,23 @@ md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err,
     fz_set_error_callback(ctx, quiet, NULL);
     md_install_system_fonts(ctx, &d->fonts);
     fz_document *doc = NULL;
+    fz_buffer *buf = NULL;
     fz_var(doc);
+    fz_var(buf);
     fz_try(ctx) {
         fz_register_document_handlers(ctx);
         if (user_css != NULL) {
             fz_set_user_css(ctx, user_css);
         }
-        doc = fz_open_document(ctx, path);
+        if (path != NULL) {
+            doc = fz_open_document(ctx, path);
+        } else {
+            buf = fz_new_buffer_from_copied_data(ctx, data, len);
+            doc = fz_open_document_with_buffer(ctx, magic, buf);
+        }
+    }
+    fz_always(ctx) {
+        fz_drop_buffer(ctx, buf);
     }
     fz_catch(ctx) {
         set_err(ctx, err, errlen);
@@ -174,6 +194,15 @@ md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err,
     d->doc = doc;
     d->budget = budget;
     return d;
+}
+
+md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err, int errlen) {
+    return open_document(path, NULL, 0, NULL, user_css, limit, err, errlen);
+}
+
+md_doc *md_open_buffer(const unsigned char *data, size_t len, const char *magic, const char *user_css,
+                       size_t limit, char *err, int errlen) {
+    return open_document(NULL, data, len, magic, user_css, limit, err, errlen);
 }
 
 static void drop_style(fz_context *ctx, md_image_style *style) {
@@ -193,22 +222,143 @@ void md_close(md_doc *d) {
     fz_drop_document(d->ctx, d->doc);
     md_drop_font_files(d->ctx, &d->fonts);
     fz_drop_context(d->ctx);
+    free(d->skip);
+    free(d->first);
     free(d->budget);
     free(d);
 }
 
-int md_layout(md_doc *d, float width, float height, float em, char *err, int errlen) {
-    int count = -1;
-    fz_var(count);
-    fz_try(d->ctx) {
-        fz_layout_document(d->ctx, d->doc, width, height, em);
-        count = fz_count_pages(d->ctx, d->doc);
+// is_blank reports whether a page of a chapter draws nothing at all.
+static int is_blank(fz_context *ctx, fz_document *doc, int chapter, int index) {
+    fz_page *page = NULL;
+    fz_device *dev = NULL;
+    fz_rect bounds = fz_empty_rect;
+    int blank = 0;
+    fz_var(page);
+    fz_var(dev);
+    fz_var(blank);
+    fz_try(ctx) {
+        page = fz_load_chapter_page(ctx, doc, chapter, index);
+        dev = fz_new_bbox_device(ctx, &bounds);
+        fz_run_page(ctx, page, dev, fz_identity, NULL);
+        fz_close_device(ctx, dev);
+        blank = fz_is_empty_rect(bounds);
     }
-    fz_catch(d->ctx) {
-        set_err(d->ctx, err, errlen);
+    fz_always(ctx) {
+        fz_drop_device(ctx, dev);
+        fz_drop_page(ctx, page);
+    }
+    fz_catch(ctx) {
+        fz_rethrow_if(ctx, FZ_ERROR_SYSTEM);
+        fz_report_error(ctx); // a page that cannot be drawn is shown, and fails there
+        blank = 0;
+    }
+    return blank;
+}
+
+static void forget_pages(md_doc *d) {
+    free(d->skip);
+    free(d->first);
+    d->skip = NULL;
+    d->first = NULL;
+    d->chapters = 0;
+}
+
+// md_layout leaves out the blank pages that open a chapter of a reflowable
+// document. MuPDF breaks the page before an element that asks for it only
+// below the top of the page, and it moves the top margins of a chapter's
+// first elements up to its root, so a chapter whose first element breaks
+// the page, as many do, starts with an empty page. A chapter keeps at least
+// one page.
+int md_layout(md_doc *d, float width, float height, float em, char *err, int errlen) {
+    fz_context *ctx = d->ctx;
+    int count = -1;
+    int *skip = NULL;
+    int *first = NULL;
+    fz_var(count);
+    fz_var(skip);
+    fz_var(first);
+    forget_pages(d);
+    fz_try(ctx) {
+        fz_layout_document(ctx, d->doc, width, height, em);
+        int chapters = fz_count_chapters(ctx, d->doc);
+        int reflowable = fz_is_document_reflowable(ctx, d->doc);
+        skip = calloc((size_t)chapters + 1, sizeof *skip);
+        first = calloc((size_t)chapters + 1, sizeof *first);
+        if (skip == NULL || first == NULL) {
+            fz_throw(ctx, FZ_ERROR_GENERIC, "out of memory");
+        }
+        int total = 0;
+        for (int c = 0; c < chapters; c++) {
+            int pages = fz_count_chapter_pages(ctx, d->doc, c);
+            while (reflowable && skip[c] < pages - 1 && is_blank(ctx, d->doc, c, skip[c])) {
+                skip[c]++;
+            }
+            first[c] = total;
+            total += pages - skip[c];
+        }
+        first[chapters] = total;
+        d->chapters = chapters;
+        d->skip = skip;
+        d->first = first;
+        skip = NULL;
+        first = NULL;
+        count = total;
+    }
+    fz_always(ctx) {
+        free(skip);
+        free(first);
+    }
+    fz_catch(ctx) {
+        set_err(ctx, err, errlen);
         count = -1;
     }
     return count;
+}
+
+// shown_location returns the location of a page among the pages shown, or a
+// chapter of -1 when there is no such page.
+static fz_location shown_location(md_doc *d, int page) {
+    if (d->first == NULL || page < 0 || page >= d->first[d->chapters]) {
+        return fz_make_location(-1, -1);
+    }
+    // The last chapter whose first page is at or before page; chapters
+    // without pages share their first page with the next one.
+    int lo = 0, hi = d->chapters - 1;
+    while (lo < hi) {
+        int mid = (lo + hi + 1) / 2;
+        if (d->first[mid] <= page) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return fz_make_location(lo, page - d->first[lo] + d->skip[lo]);
+}
+
+// shown_number returns the number among the pages shown of MuPDF's page at
+// loc, or -1 when there is none. A page left out counts as the first page
+// shown of its chapter.
+static int shown_number(md_doc *d, fz_location loc) {
+    if (d->first == NULL || loc.chapter < 0 || loc.chapter >= d->chapters) {
+        return -1;
+    }
+    int pages = d->first[loc.chapter + 1] - d->first[loc.chapter];
+    int index = loc.page - d->skip[loc.chapter];
+    if (pages == 0) {
+        return -1;
+    }
+    index = index < 0 ? 0 : (index >= pages ? pages - 1 : index);
+    return d->first[loc.chapter] + index;
+}
+
+// load_shown loads a page among the pages shown, or throws.
+static fz_page *load_shown(fz_context *ctx, md_doc *d, int page) {
+    fz_location loc = shown_location(d, page);
+    if (loc.chapter < 0) {
+        fz_throw(ctx, FZ_ERROR_ARGUMENT, "no page %d", page);
+    }
+    return fz_load_chapter_page(ctx, d->doc, loc.chapter, loc.page);
 }
 
 // The image layer shows images and shadings on a black page, in color. At
@@ -828,7 +978,7 @@ int md_render_layers(md_doc *d, int page_number, float scale, const md_layers *l
         pictures = MD_PICTURES_HIDDEN;
     }
     fz_try(ctx) {
-        page = fz_load_page(ctx, d->doc, page_number);
+        page = load_shown(ctx, d, page_number);
         fz_matrix ctm = fz_scale(scale, scale);
         // The pixmaps borrow the caller's buffers, so dropping them frees nothing.
         text_pix = fz_new_pixmap_with_data(ctx, fz_device_gray(ctx), layers->width, layers->height, NULL, 0,
@@ -971,7 +1121,7 @@ int md_page_images(md_doc *d, int page_number, md_rect **boxes, char *err, int e
     fz_var(count);
     *boxes = NULL;
     fz_try(ctx) {
-        page = fz_load_page(ctx, d->doc, page_number);
+        page = load_shown(ctx, d, page_number);
         f = find_images(ctx, page, -1);
         *boxes = f->boxes;
         count = f->count;
@@ -1005,7 +1155,7 @@ unsigned char *md_image_pixels(md_doc *d, int page_number, int index, int max_si
     fz_var(dev);
     fz_var(out);
     fz_try(ctx) {
-        page = fz_load_page(ctx, d->doc, page_number);
+        page = load_shown(ctx, d, page_number);
         f = find_images(ctx, page, index);
         if (f->image == NULL) {
             fz_throw(ctx, FZ_ERROR_ARGUMENT, "no image %d on page %d", index, page_number);
@@ -1075,15 +1225,17 @@ unsigned char *md_image_pixels(md_doc *d, int page_number, int index, int max_si
 
 unsigned char *md_render_png(md_doc *d, int page_number, float scale, size_t *len, char *err, int errlen) {
     fz_context *ctx = d->ctx;
+    fz_page *page = NULL;
     fz_pixmap *pix = NULL;
     fz_buffer *buf = NULL;
     unsigned char *out = NULL;
+    fz_var(page);
     fz_var(pix);
     fz_var(buf);
     fz_var(out);
     fz_try(ctx) {
-        pix = fz_new_pixmap_from_page_number(ctx, d->doc, page_number, fz_scale(scale, scale),
-                                             fz_device_rgb(ctx), 0);
+        page = load_shown(ctx, d, page_number);
+        pix = fz_new_pixmap_from_page(ctx, page, fz_scale(scale, scale), fz_device_rgb(ctx), 0);
         buf = fz_new_buffer_from_pixmap_as_png(ctx, pix, fz_default_color_params);
         unsigned char *data = NULL;
         size_t n = fz_buffer_storage(ctx, buf, &data);
@@ -1097,6 +1249,7 @@ unsigned char *md_render_png(md_doc *d, int page_number, float scale, size_t *le
     fz_always(ctx) {
         fz_drop_buffer(ctx, buf);
         fz_drop_pixmap(ctx, pix);
+        fz_drop_page(ctx, page);
     }
     fz_catch(ctx) {
         free(out);
@@ -1110,7 +1263,12 @@ int md_chapter_position(md_doc *d, int page, int *chapter, float *fraction) {
     int status = 0;
     fz_var(status);
     fz_try(d->ctx) {
-        fz_location loc = fz_location_from_page_number(d->ctx, d->doc, page);
+        // The fraction counts MuPDF's pages, so that it does not depend on
+        // which pages are left out.
+        fz_location loc = shown_location(d, page);
+        if (loc.chapter < 0) {
+            fz_throw(d->ctx, FZ_ERROR_ARGUMENT, "no page %d", page);
+        }
         int pages = fz_count_chapter_pages(d->ctx, d->doc, loc.chapter);
         *chapter = loc.chapter;
         *fraction = pages > 1 ? (float)loc.page / (float)(pages - 1) : 0.0f;
@@ -1129,7 +1287,7 @@ int md_page_at(md_doc *d, int chapter, float fraction) {
             int pages = fz_count_chapter_pages(d->ctx, d->doc, chapter);
             int within = (int)(fraction * (float)(pages - 1) + 0.5f);
             within = within < 0 ? 0 : (within >= pages ? pages - 1 : within);
-            page = fz_page_number_from_location(d->ctx, d->doc, fz_make_location(chapter, within));
+            page = shown_number(d, fz_make_location(chapter, within));
         }
     }
     fz_catch(d->ctx) {
@@ -1225,7 +1383,7 @@ int md_resolve(md_doc *d, const char *uri) {
     fz_try(d->ctx) {
         float x = 0, y = 0;
         fz_location loc = fz_resolve_link(d->ctx, d->doc, uri, &x, &y);
-        page = loc.chapter < 0 ? -1 : fz_page_number_from_location(d->ctx, d->doc, loc);
+        page = shown_number(d, loc);
     }
     fz_catch(d->ctx) {
         page = -1;
@@ -1246,47 +1404,28 @@ int md_count_chapters(md_doc *d) {
 }
 
 int md_chapter_pages(md_doc *d, int chapter) {
-    int pages = -1;
-    fz_var(pages);
-    fz_try(d->ctx) {
-        if (chapter >= 0 && chapter < fz_count_chapters(d->ctx, d->doc)) {
-            pages = fz_count_chapter_pages(d->ctx, d->doc, chapter);
-        }
+    if (d->first == NULL || chapter < 0 || chapter >= d->chapters) {
+        return -1;
     }
-    fz_catch(d->ctx) {
-        pages = -1;
-    }
-    return pages;
+    return d->first[chapter + 1] - d->first[chapter];
 }
 
 int md_location(md_doc *d, int page, int *chapter, int *index) {
-    int status = 0;
-    fz_var(status);
-    fz_try(d->ctx) {
-        fz_location loc = fz_location_from_page_number(d->ctx, d->doc, page);
-        *chapter = loc.chapter;
-        *index = loc.page;
-        status = loc.chapter < 0 ? -1 : 0;
+    fz_location loc = shown_location(d, page);
+    if (loc.chapter < 0) {
+        return -1;
     }
-    fz_catch(d->ctx) {
-        status = -1;
-    }
-    return status;
+    *chapter = loc.chapter;
+    *index = page - d->first[loc.chapter];
+    return 0;
 }
 
 int md_page_number(md_doc *d, int chapter, int index) {
-    int page = -1;
-    fz_var(page);
-    fz_try(d->ctx) {
-        if (chapter >= 0 && chapter < fz_count_chapters(d->ctx, d->doc) && index >= 0 &&
-            index < fz_count_chapter_pages(d->ctx, d->doc, chapter)) {
-            page = fz_page_number_from_location(d->ctx, d->doc, fz_make_location(chapter, index));
-        }
+    int pages = md_chapter_pages(d, chapter);
+    if (pages < 0 || index < 0 || index >= pages) {
+        return -1;
     }
-    fz_catch(d->ctx) {
-        page = -1;
-    }
-    return page;
+    return d->first[chapter] + index;
 }
 
 // MD_MUPDF_PARAGRAPH_DIST is how far apart, in ems, MuPDF lets the baselines
@@ -1315,15 +1454,18 @@ static int continues_block(fz_stext_line *prev, fz_stext_line *line, float line_
 
 int md_page_chars(md_doc *d, int page_number, float line_dist, md_char **chars, char *err, int errlen) {
     fz_context *ctx = d->ctx;
+    fz_page *page = NULL;
     fz_stext_page *text = NULL;
     int count = -1;
+    fz_var(page);
     fz_var(text);
     fz_var(count);
     *chars = NULL;
     fz_try(ctx) {
         // Zero flags: ligatures expanded, whitespace as spaces.
         fz_stext_options options = {0};
-        text = fz_new_stext_page_from_page_number(ctx, d->doc, page_number, &options);
+        page = load_shown(ctx, d, page_number);
+        text = fz_new_stext_page_from_page(ctx, page, &options);
         int n = 0;
         for (fz_stext_block *b = text->first_block; b != NULL; b = b->next) {
             if (b->type != FZ_STEXT_BLOCK_TEXT) {
@@ -1362,6 +1504,7 @@ int md_page_chars(md_doc *d, int page_number, float line_dist, md_char **chars, 
     }
     fz_always(ctx) {
         fz_drop_stext_page(ctx, text);
+        fz_drop_page(ctx, page);
     }
     fz_catch(ctx) {
         free(*chars);

@@ -57,12 +57,13 @@ final class BookFilesTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
         let book = directory.appendingPathComponent("Book.EPUB")
-        let notes = directory.appendingPathComponent("notes.txt")
-        for file in [book, notes] { try Data().write(to: file) }
+        let mobi = directory.appendingPathComponent("Other.mobi")
+        let notes = directory.appendingPathComponent("notes.md")
+        for file in [book, mobi, notes] { try Data().write(to: file) }
         let gone = directory.appendingPathComponent("gone.epub").path
 
-        let sorted = BookFiles.sort([book.path, notes.path, folder.path, unpacked.path, gone])
-        XCTAssertEqual(sorted.files, [book.path, unpacked.path])
+        let sorted = BookFiles.sort([book.path, mobi.path, notes.path, folder.path, unpacked.path, gone])
+        XCTAssertEqual(sorted.files, [book.path, mobi.path, unpacked.path])
         XCTAssertEqual(sorted.folders, [folder.path])
     }
 }
@@ -91,11 +92,14 @@ final class CollectionDecodingTests: XCTestCase {
     }
 
     func testFolderImportResult() throws {
-        let json = #"{"folder":1,"found":3,"added":[9],"updated":[],"missing":[2],"failed":[{"path":"/x.epub","error":"not a zip"}]}"#
+        let json = #"{"folder":1,"found":3,"added":[9],"updated":[],"missing":[2],"failed":[{"path":"/x.epub","error":"not a zip","drm":false},{"path":"/y.mobi","error":"protected","drm":true}]}"#
         let result = try JSONDecoder().decode(FolderImportResult.self, from: Data(json.utf8))
         XCTAssertEqual(result.added, [9])
         XCTAssertEqual(result.missing, [2])
         XCTAssertEqual(result.failed.first?.path, "/x.epub")
+        let names = AppModel.failedNames(result.failed)
+        XCTAssertEqual(names.failed, ["x.epub"])
+        XCTAssertEqual(names.protected, ["y.mobi"])
     }
 
     func testVerifyFolderArgument() {

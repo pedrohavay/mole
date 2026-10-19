@@ -39,6 +39,8 @@ struct FolderImportResult: Decodable, Sendable {
     struct Failure: Decodable, Sendable {
         let path: String
         let error: String
+        /// DRM is true when the file is a book protected by DRM.
+        let drm: Bool
     }
 
     /// Folder is the id of the watched folder, or 0 when it is not watched.
@@ -73,29 +75,4 @@ struct BookDrag: Codable, Transferable {
 extension UTType {
     /// MoleBook is a book of the library, dragged inside Mole.
     static let moleBook = UTType(exportedAs: "io.github.pedrohavay.mole.book")
-}
-
-/// BookFiles sorts paths the user hands to Mole into book files and
-/// folders. Files Mole cannot read are left out, so this is the one place
-/// that says which files are books.
-enum BookFiles {
-    /// Extensions are the file name extensions Mole imports.
-    static let extensions: Set<String> = ["epub"]
-
-    /// Returns the readable files and the folders among paths.
-    static func sort(_ paths: [String]) -> (files: [String], folders: [String]) {
-        var files: [String] = []
-        var folders: [String] = []
-        for path in paths {
-            var isFolder: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: path, isDirectory: &isFolder) else { continue }
-            let isBook = extensions.contains((path as NSString).pathExtension.lowercased())
-            if isFolder.boolValue && !isBook {
-                folders.append(path)
-            } else if isBook {
-                files.append(path)
-            }
-        }
-        return (files, folders)
-    }
 }

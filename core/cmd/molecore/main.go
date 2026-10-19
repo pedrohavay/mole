@@ -31,8 +31,9 @@ package main
 #include <string.h>
 
 // Defined in lasterror.c.
-void molecore_set_error(const char *msg);
+void molecore_set_error(const char *msg, int kind);
 char *molecore_copy_error(void);
+int molecore_error_kind(void);
 */
 import "C"
 
@@ -45,6 +46,7 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	"mole/core/internal/bookfile"
 	"mole/core/internal/importer"
 	"mole/core/internal/library"
 	"mole/core/internal/mupdf"
@@ -163,13 +165,24 @@ var (
 	searches handles[*reading.Search]
 )
 
+// Kinds of failure, which mole_last_error_kind reports so that the app can
+// explain them in the user's language.
+const (
+	errorKindOther = 0 // any failure without a kind of its own
+	errorKindDRM   = 1 // the book is protected by DRM
+)
+
 // fail records err as the last error of the calling thread. Exported
 // functions run on the thread of their C caller, so each caller sees its own
 // errors.
 func fail(err error) {
+	kind := errorKindOther
+	if errors.Is(err, bookfile.ErrDRM) {
+		kind = errorKindDRM
+	}
 	msg := C.CString(err.Error())
 	defer C.free(unsafe.Pointer(msg))
-	C.molecore_set_error(msg)
+	C.molecore_set_error(msg, C.int(kind))
 }
 
 var errBadHandle = errors.New("molecore: unknown handle")
@@ -180,6 +193,14 @@ var errBadHandle = errors.New("molecore: unknown handle")
 //export mole_last_error
 func mole_last_error() *C.char {
 	return C.molecore_copy_error()
+}
+
+// mole_last_error_kind returns the kind of the last failure on the calling
+// thread: 1 when the book is protected by DRM, 0 for every other failure.
+//
+//export mole_last_error_kind
+func mole_last_error_kind() C.int {
+	return C.molecore_error_kind()
 }
 
 //export mole_free
@@ -285,9 +306,10 @@ func mole_library_cover(lib, bookID C.int64_t, length *C.int64_t) unsafe.Pointer
 	return C.CBytes(b.Cover)
 }
 
-// mole_library_import adds an EPUB and returns the book's ID, or 0. The
-// library keeps a copy of the file in a Books directory next to its
-// database. A file is known by its path, size and modification time:
+// mole_library_import adds a book (EPUB, MOBI, PRC, FB2 or plain text) and
+// returns its ID, or 0; a book protected by DRM fails with the DRM kind of
+// error. The library keeps a copy of the file in a Books directory next to
+// its database. A file is known by its path, size and modification time:
 // importing it again returns the same book without reading it, and a
 // changed or renamed file updates its book rather than adding another. It
 // may run on a background thread.
@@ -502,7 +524,8 @@ func mole_library_remove_annotation(lib, id C.int64_t) C.int {
 
 // Reading sessions.
 
-// mole_session_open opens a book at the place it was left.
+// mole_session_open opens a book at the place it was left. A book protected
+// by DRM fails with the DRM kind of error.
 //
 //export mole_session_open
 func mole_session_open(lib, bookID C.int64_t) C.int64_t {

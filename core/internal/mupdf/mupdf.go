@@ -1,7 +1,7 @@
-// Package mupdf wraps the parts of MuPDF the reader needs: reflowing an EPUB
-// to a page size, rendering pages as coverage masks with color and image
-// layers or as PNG images, the images of a page, positions that survive a
-// relayout and the text of a page.
+// Package mupdf wraps the parts of MuPDF the reader needs: reflowing a book
+// (EPUB, MOBI, FB2 or HTML) to a page size, rendering pages as coverage
+// masks with color and image layers or as PNG images, the images of a page,
+// positions that survive a relayout and the text of a page.
 //
 // Every Document has its own MuPDF context, so different documents may be
 // used on different goroutines at the same time.
@@ -67,6 +67,29 @@ func open(path, userCSS string, limit int) (*Document, error) {
 	return &Document{d: d}, nil
 }
 
+// OpenBuffer opens a document held in data, whose type magic names by
+// extension or MIME type, such as "html". The document keeps a copy of data
+// and is otherwise like one opened with Open.
+func OpenBuffer(data []byte, magic, userCSS string) (*Document, error) {
+	if len(data) == 0 {
+		return nil, errors.New("open: empty document")
+	}
+	cmagic := C.CString(magic)
+	defer C.free(unsafe.Pointer(cmagic))
+	var ccss *C.char
+	if userCSS != "" {
+		ccss = C.CString(userCSS)
+		defer C.free(unsafe.Pointer(ccss))
+	}
+	msg := make([]byte, errLen)
+	d := C.md_open_buffer((*C.uchar)(unsafe.Pointer(&data[0])), C.size_t(len(data)), cmagic, ccss,
+		C.size_t(memoryLimit), cbuf(msg), errLen)
+	if d == nil {
+		return nil, fmt.Errorf("open %s document: %s", magic, cstr(msg))
+	}
+	return &Document{d: d}, nil
+}
+
 // Close releases the document.
 func (doc *Document) Close() {
 	C.md_close(doc.d)
@@ -74,7 +97,10 @@ func (doc *Document) Close() {
 }
 
 // Layout reflows the document to pages of width x height points with a base
-// font size of em points and returns the number of pages.
+// font size of em points and returns the number of pages. A reflowable
+// document leaves out the blank pages MuPDF makes at the start of a chapter
+// whose first element breaks the page; every method numbers pages without
+// them.
 func (doc *Document) Layout(width, height, em float64) (int, error) {
 	msg := make([]byte, errLen)
 	n := C.md_layout(doc.d, C.float(width), C.float(height), C.float(em), cbuf(msg), errLen)

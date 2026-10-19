@@ -402,3 +402,23 @@ func wordAt(t *pageText, i int) string {
 	}
 	return b.String()
 }
+
+// TestChapterStartingWithBreak checks that a chapter whose first element
+// breaks the page opens on its text, and that anchors find it there.
+func TestChapterStartingWithBreak(t *testing.T) {
+	path := testbook.Chapters(t,
+		`<h1 style="page-break-before:always">Start</h1><p>First chapter.</p>`,
+		`<div style="page-break-before:always"><p>Second chapter.</p></div>`)
+	s := openSession(t, path, 400, 16)
+	if s.Pages() != 2 {
+		t.Errorf("Pages = %d, want 2, one per chapter", s.Pages())
+	}
+	for page := range s.Pages() {
+		if pt, err := s.pageText(page); err != nil || pt.count == 0 {
+			t.Errorf("page %d: %d characters, %v; want text", page, pt.count, err)
+		}
+	}
+	if page, err := s.AnchorPage(Anchor{Chapter: 1}); err != nil || page != 1 {
+		t.Errorf("AnchorPage of the second chapter = %d, %v; want 1", page, err)
+	}
+}

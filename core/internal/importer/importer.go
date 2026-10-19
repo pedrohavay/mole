@@ -1,7 +1,8 @@
-// Package importer adds EPUB files to the library: it copies them into the
+// Package importer adds books to the library: it copies them into the
 // library's Books directory and reads their metadata and cover, falling back
-// to the first page when no cover is declared. It also imports whole
-// folders and keeps watched folders in sync.
+// to the first page when no cover is declared. It takes the formats of
+// package bookfile: EPUB, MOBI, PRC, FB2 and plain text. It also imports
+// whole folders and keeps watched folders in sync.
 package importer
 
 import (
@@ -15,18 +16,18 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"mole/core/internal/epub"
+	"mole/core/internal/bookfile"
 	"mole/core/internal/library"
-	"mole/core/internal/mupdf"
 )
 
 // maxNameLength is the longest file name, in bytes, kept from the original
 // when naming the library's copy.
 const maxNameLength = 100
 
-// Import adds the EPUB at path to store and returns the stored book. The
+// Import adds the book at path to store and returns the stored book. The
 // library keeps a copy of the file, so the book survives the original being
-// moved or deleted.
+// moved or deleted. A book protected by DRM is refused with an error that
+// wraps bookfile.ErrDRM.
 //
 // The original's path, size and modification time identify it. A file
 // imported before is returned without being read again; one that changed
@@ -42,9 +43,11 @@ func Import(store *library.Store, path string, now time.Time) (library.Book, err
 }
 
 // Supported reports whether Import reads the file at path, judging by its
-// name. Folder imports skip the files it rejects.
+// name: the extension of one of the formats of package bookfile. Folder
+// imports skip the files it rejects.
 func Supported(path string) bool {
-	return strings.EqualFold(filepath.Ext(path), ".epub")
+	_, ok := bookfile.FormatOf(path)
+	return ok
 }
 
 // change says what an import did to the library.
@@ -152,26 +155,25 @@ func movedBook(store *library.Store, st library.Stamp) (library.Book, bool, erro
 	return library.Book{}, false, nil
 }
 
-// readBook copies the EPUB at abs into the library and reads its metadata
-// and cover from the copy. The copy is removed if the file cannot be read.
+// readBook copies the book at abs into the library, under the extension of
+// its format, and reads its metadata and cover from the copy. The copy is
+// removed if the file cannot be read.
 func readBook(store *library.Store, abs string, st library.Stamp) (library.Book, error) {
-	copied, err := copyInto(store.BooksDir(), abs)
+	format, err := bookfile.Detect(abs)
 	if err != nil {
 		return library.Book{}, fmt.Errorf("import %s: %w", abs, err)
 	}
-	info, err := epub.Inspect(copied)
+	copied, err := copyInto(store.BooksDir(), abs, format.Extension(abs))
+	if err != nil {
+		return library.Book{}, fmt.Errorf("import %s: %w", abs, err)
+	}
+	info, err := bookfile.Inspect(copied)
 	if err != nil {
 		os.Remove(copied)
 		return library.Book{}, fmt.Errorf("import %s: %w", abs, err)
 	}
 	if info.Title == "" {
 		info.Title = strings.TrimSuffix(filepath.Base(abs), filepath.Ext(abs))
-	}
-	if info.Cover == nil {
-		// The cover is decorative; a book without one is still imported.
-		if cover, err := firstPage(copied); err == nil {
-			info.Cover = cover
-		}
 	}
 	return library.Book{
 		Path: copied, OriginalPath: abs, Title: info.Title, Author: info.Author, Cover: info.Cover, Source: st,
@@ -200,8 +202,8 @@ func stampOf(info fs.FileInfo) library.Stamp {
 }
 
 // copyInto copies the file at path into dir under a new, unique name made
-// from its own, and returns the path of the copy.
-func copyInto(dir, path string) (copied string, err error) {
+// from its own and ending in ext, and returns the path of the copy.
+func copyInto(dir, path, ext string) (copied string, err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
@@ -210,7 +212,7 @@ func copyInto(dir, path string) (copied string, err error) {
 		return "", err
 	}
 	defer src.Close()
-	dst, err := os.CreateTemp(dir, copyName(path))
+	dst, err := os.CreateTemp(dir, copyName(path, ext))
 	if err != nil {
 		return "", err
 	}
@@ -230,8 +232,8 @@ func copyInto(dir, path string) (copied string, err error) {
 }
 
 // copyName returns the os.CreateTemp pattern for the copy of path: its name,
-// shortened, then a random number and the .epub extension.
-func copyName(path string) string {
+// shortened, then a random number and the extension ext.
+func copyName(path, ext string) string {
 	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
 	name = strings.ReplaceAll(name, "*", "")
 	if len(name) > maxNameLength {
@@ -243,18 +245,5 @@ func copyName(path string) string {
 	if name == "" {
 		name = "book"
 	}
-	return name + "-*.epub"
-}
-
-// firstPage renders the first page, laid out at a cover's proportions.
-func firstPage(path string) ([]byte, error) {
-	doc, err := mupdf.Open(path, "")
-	if err != nil {
-		return nil, err
-	}
-	defer doc.Close()
-	if _, err := doc.Layout(600, 900, 16); err != nil {
-		return nil, err
-	}
-	return doc.RenderPNG(0, 0.5)
+	return name + "-*" + ext
 }

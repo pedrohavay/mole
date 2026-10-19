@@ -140,14 +140,14 @@ extension AppModel {
         Task {
             var found = 0
             var failed: [String] = []
+            var protected: [String] = []
             for path in folders {
                 do {
                     let result = try await importer.run { try $0.importFolder(at: path, collections: collections, watch: watch) }
                     found += result.found
-                    failed += result.failed.map { failure in
-                        NSLog("Mole: cannot import %@: %@", failure.path, failure.error)
-                        return (failure.path as NSString).lastPathComponent
-                    }
+                    let names = Self.failedNames(result.failed)
+                    failed += names.failed
+                    protected += names.protected
                     forgetCovers(of: result.updated)
                 } catch {
                     NSLog("Mole: cannot import the folder %@: %@", path, error.localizedDescription)
@@ -156,8 +156,8 @@ extension AppModel {
             }
             importingFolders -= folders.count
             reload()
-            if !failed.isEmpty {
-                alert(L10n.text("import.failed.title"), L10n.format("import.failed.detail", failed.joined(separator: ", ")))
+            if let problems = importProblems(failed: failed, protected: protected) {
+                alert(L10n.text("import.failed.title"), problems)
             } else if found == 0 && !watch {
                 alert(L10n.text("import.folder.none.title"), L10n.text("import.folder.none.detail"))
             }
@@ -179,11 +179,8 @@ extension AppModel {
                 let id = folder.id
                 let result = try await importer.run { try $0.sync(folder: id) }
                 forgetCovers(of: result.updated)
-                for item in result.failed { NSLog("Mole: cannot import %@: %@", item.path, item.error) }
-                if !result.failed.isEmpty {
-                    failure = L10n.format("import.failed.detail",
-                                          result.failed.map { ($0.path as NSString).lastPathComponent }.joined(separator: ", "))
-                }
+                let names = Self.failedNames(result.failed)
+                failure = importProblems(failed: names.failed, protected: names.protected)
             } catch {
                 NSLog("Mole: cannot sync %@: %@", folder.path, error.localizedDescription)
                 failure = error.localizedDescription
@@ -224,5 +221,22 @@ extension AppModel {
         for folder in folders where paths.contains(folder.path) {
             sync(folder, quietly: true)
         }
+    }
+
+    /// Returns the names of the files a folder import could not add: the
+    /// books protected by DRM apart from the rest, which are logged.
+    nonisolated static func failedNames(_ failures: [FolderImportResult.Failure]) -> (failed: [String], protected: [String]) {
+        var failed: [String] = []
+        var protected: [String] = []
+        for failure in failures {
+            let name = (failure.path as NSString).lastPathComponent
+            if failure.drm {
+                protected.append(name)
+            } else {
+                NSLog("Mole: cannot import %@: %@", failure.path, failure.error)
+                failed.append(name)
+            }
+        }
+        return (failed, protected)
     }
 }

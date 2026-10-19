@@ -57,6 +57,7 @@
 "edr.idle" = "EDR standing by";
 
 /* Errors */
+"error.book.drm" = "This book is protected by DRM.";
 "error.core.unknown" = "Unknown error in the reading core.";
 "error.library.title" = "Cannot open the library";
 "error.library.notOpened" = "The library was not opened.";
@@ -74,11 +75,12 @@
 "import.progress" = "Adding %ld…";
 "import.failed.title" = "Some files were not added";
 "import.failed.detail" = "Could not read: %@.";
-"import.panel.message" = "Choose EPUB books, or folders of books.";
+"import.drm.detail" = "Protected by DRM, which Mole cannot open: %@.";
+"import.panel.message" = "Choose books (EPUB, MOBI, FB2 or text), or folders of books.";
 "import.folder.progress" = "Adding books from folders…";
 "import.folder.title" = "Add the books in “%@”";
 "import.folders.title" = "Add the books in %ld folders";
-"import.folder.detail" = "Mole adds every EPUB in the folder and in its subfolders.";
+"import.folder.detail" = "Mole adds every book in the folder and in its subfolders: EPUB, MOBI, PRC, FB2 and text files.";
 "import.folder.collections" = "Create collections from folders";
 "import.folder.collections.note" = "Each folder that holds books becomes a collection with its name.";
 "import.folder.sync" = "Keep this folder in sync";
@@ -86,7 +88,7 @@
 "import.folder.sync.note" = "Mole adds books that appear here later and updates books that change. A book whose file leaves the folder is marked, never removed.";
 "import.folder.action" = "Add Books";
 "import.folder.none.title" = "No books found";
-"import.folder.none.detail" = "There are no EPUB files in the folders you chose.";
+"import.folder.none.detail" = "There are no EPUB, MOBI, PRC, FB2 or text files in the folders you chose.";
 "sync.failed" = "Some books in “%@” were not synced";
 "folder.remove.failed" = "Cannot stop syncing the folder";
 
@@ -94,7 +96,7 @@
 "library.add" = "Add Books…";
 "library.add.help" = "Add books (⌘O)";
 "library.empty.title" = "Your shelf is empty";
-"library.empty.message" = "Add EPUB books to start reading. Only the letters light up; the rest of the screen stays dark.";
+"library.empty.message" = "Add EPUB, MOBI, FB2 or text books to start reading. Only the letters light up; the rest of the screen stays dark.";
 "library.noResults.title" = "No results";
 "library.noResults.message" = "No book matches “%@”.";
 "library.options" = "Options";
@@ -136,7 +138,7 @@
 "shelf.unread" = "Not Started";
 "shelf.finished" = "Finished";
 "shelf.empty.title" = "Nothing here yet";
-"shelf.empty.all" = "Add EPUB books to start reading.";
+"shelf.empty.all" = "Add EPUB, MOBI, FB2 or text books to start reading.";
 "shelf.empty.reading" = "Books you start appear here until you finish them.";
 "shelf.empty.unread" = "Books you have not opened yet appear here.";
 "shelf.empty.finished" = "Books you read to the end appear here.";
@@ -316,7 +318,7 @@
 "settings.updates.note" = "Mole looks for a new version once a day and asks before installing it.";
 "settings.folders" = "Synced folders";
 "settings.folders.empty" = "No folders are kept in sync. Choose a folder in File › Add Books… and turn on Keep this folder in sync.";
-"settings.folders.note" = "Mole watches these folders and adds new or changed EPUB files. A book whose file leaves its folder is marked in the library and stays until you remove it.";
+"settings.folders.note" = "Mole watches these folders and adds new or changed books. A book whose file leaves its folder is marked in the library and stays until you remove it.";
 "settings.folders.syncNow" = "Sync Now";
 "settings.folders.remove" = "Stop Syncing";
 "settings.folders.remove.help" = "Stop syncing this folder. Its books stay in the library.";

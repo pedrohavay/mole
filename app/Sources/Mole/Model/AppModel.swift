@@ -218,7 +218,7 @@ final class AppModel {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = true
-        panel.allowedContentTypes = [UTType.epub, .folder]
+        panel.allowedContentTypes = BookFiles.contentTypes + [.folder]
         panel.prompt = L10n.text("import.prompt")
         panel.message = L10n.text("import.panel.message")
         guard panel.runModal() == .OK else { return }
@@ -233,8 +233,8 @@ final class AppModel {
         if !folders.isEmpty { folderImport = FolderImport(paths: folders) }
     }
 
-    /// Adds the EPUB files at paths in the background; done runs on the
-    /// main thread with the ids of the books added, once they are listed.
+    /// Adds the books at paths in the background; done runs on the main
+    /// thread with the ids of the books added, once they are listed.
     func importBooks(_ paths: [String], done: @escaping @MainActor ([Int64]) -> Void = { _ in }) {
         guard !paths.isEmpty else { return }
         importing += paths.count
@@ -244,16 +244,29 @@ final class AppModel {
             // A file imported again may have changed, cover included.
             forgetCovers(of: result.added)
             reload()
-            if !result.failed.isEmpty {
-                alert(L10n.text("import.failed.title"),
-                      L10n.format("import.failed.detail", result.failed.joined(separator: ", ")))
+            if let problems = importProblems(failed: result.failed, protected: result.protected) {
+                alert(L10n.text("import.failed.title"), problems)
             }
             done(result.added)
         }
     }
 
-    /// Adds the EPUB files at paths, as opened from Finder, and opens the
-    /// first one. Folders are added as from File > Add Books.
+    /// Returns what went wrong adding books, a line for the files that could
+    /// not be read and one for the books protected by DRM, or nil when
+    /// nothing did.
+    func importProblems(failed: [String], protected: [String]) -> String? {
+        var lines: [String] = []
+        if !failed.isEmpty {
+            lines.append(L10n.format("import.failed.detail", failed.joined(separator: ", ")))
+        }
+        if !protected.isEmpty {
+            lines.append(L10n.format("import.drm.detail", protected.joined(separator: ", ")))
+        }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
+
+    /// Adds the books at paths, as opened from Finder, and opens the first
+    /// one. Folders are added as from File > Add Books.
     func openFiles(_ paths: [String]) {
         let (files, folders) = BookFiles.sort(paths)
         if !folders.isEmpty { folderImport = FolderImport(paths: folders) }
@@ -505,10 +518,12 @@ final class AppModel {
 /// Importer adds books to the library on a background queue. Imports run
 /// one at a time on a library handle used by nothing else.
 final class Importer: @unchecked Sendable {
-    /// Result lists the books added and the names of the files that failed.
+    /// Result lists the books added and the names of the files that failed:
+    /// those protected by DRM apart from the rest.
     struct Result: Sendable {
         var added: [Int64] = []
         var failed: [String] = []
+        var protected: [String] = []
     }
 
     private let path: String
@@ -554,6 +569,8 @@ final class Importer: @unchecked Sendable {
         for path in paths {
             do {
                 result.added.append(try library.importBook(at: path))
+            } catch let error as CoreError where error.kind == .drm {
+                result.protected.append((path as NSString).lastPathComponent)
             } catch {
                 result.failed.append((path as NSString).lastPathComponent)
                 NSLog("Mole: cannot import %@: %@", path, error.localizedDescription)
@@ -561,11 +578,6 @@ final class Importer: @unchecked Sendable {
         }
         return result
     }
-}
-
-extension UTType {
-    /// EPUB is the type of .epub files, declared by the system.
-    static let epub = UTType("org.idpf.epub-container") ?? UTType(filenameExtension: "epub") ?? .data
 }
 
 extension Comparable {

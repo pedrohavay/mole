@@ -1,6 +1,6 @@
 import Foundation
 
-/// LaunchArguments are EPUB files to add to the library and, for
+/// LaunchArguments are books to add to the library (see BookFiles) and, for
 /// development, `--verify-dir dir` to capture the window into dir and quit
 /// (with `--verify-folder tree`, to check folder imports with the fixtures
 /// in tree), or `--smoke-test` to check that the app starts and quit (see
@@ -21,7 +21,7 @@ struct LaunchArguments: Equatable {
                 result.verifyFolder = rest.popFirst()
             } else if argument == "--smoke-test" {
                 result.smokeTest = true
-            } else if argument.lowercased().hasSuffix(".epub") {
+            } else if BookFiles.accepts(argument) {
                 result.books.append(argument)
             }
         }

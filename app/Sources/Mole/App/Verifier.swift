@@ -7,10 +7,12 @@ import SwiftUI
 /// book, turns some pages, walks the accessibility tree, reads the end of a
 /// screen aloud, captures the reader, the book's colors, its pictures in
 /// each mode, the picture viewer, the reader in several fonts, margins and
-/// spacings, the Text popover and the Settings window, and quits. With
-/// `--verify-folder tree` it checks folder imports and collections instead
-/// (see verifyFolders). It reports to standard error. Captures are 8-bit,
-/// so EDR values above SDR white come out clipped.
+/// spacings, the Text popover and the Settings window, selects and
+/// highlights a passage, searches the book for the longest word of the
+/// selection, and quits. With `--verify-folder tree` it checks folder
+/// imports and collections instead (see verifyFolders). It reports to
+/// standard error. Captures are 8-bit, so EDR values above SDR white come
+/// out clipped.
 @MainActor
 struct Verifier {
     let model: AppModel
@@ -60,7 +62,9 @@ struct Verifier {
             }
         }
         model.activeTab?.turn(10)
-        after(0.8) {
+        // After the zoom and unzoom above, so that the capture shows the page
+        // laid out for the window's final size.
+        after(2.2) {
             capture("reader.png")
             if let tab = model.activeTab {
                 report("reading \(tab.state.page + 1)-\(tab.state.lastVisible + 1) of \(tab.state.pages), chapter \(tab.currentChapter?.title ?? "-"), gain \(decimal(model.gain, 2))")
@@ -233,18 +237,20 @@ struct Verifier {
             tab.extendSelection(to: CGPoint(x: size.width * 0.6, y: size.height * (0.35 + Double(step) * 0.01)))
         }
         report("selected \(tab.selectedText()?.count ?? 0) characters: \(ReaderTab.excerpt(tab.selectedText() ?? "", limit: 60))")
+        let query = Self.longestWord(in: tab.selectedText() ?? "") ?? "pipeline"
         after(0.5) {
             capture("selection.png")
             model.highlightSelection(color: 2)
             model.toggleBookmark()
             report("highlights \(tab.highlights.count), bookmarks \(tab.bookmarks.count), bookmarked \(tab.isBookmarked), marks \(tab.marks.count)")
-            lookUp(tab, in: view)
+            lookUp(tab, in: view, then: query)
         }
     }
 
     /// Selects a word by its position, opens the dictionary and the
-    /// translation for it, and reports the reading time left.
-    private func lookUp(_ tab: ReaderTab, in view: EDRMetalView) {
+    /// translation for it, reports the reading time left, and searches the
+    /// book for query.
+    private func lookUp(_ tab: ReaderTab, in view: EDRMetalView, then query: String) {
         let size = view.bounds.size
         let found = tab.selectWord(at: CGPoint(x: size.width * 0.45, y: size.height * 0.5))
         report("word at the middle of the page: \(found ? tab.selectedText() ?? "" : "none")")
@@ -268,17 +274,23 @@ struct Verifier {
                 tab.translationText = nil
                 tab.clearSelection()
                 model.showPanel(.search)
-                tab.find("pipeline")
-                waitForSearch(tab, started: Date())
+                tab.find(query)
+                waitForSearch(tab, query: query, started: Date())
             }
         }
     }
 
-    private func waitForSearch(_ tab: ReaderTab, started: Date) {
+    /// Returns the longest word of text, to search the book for, or nil
+    /// when it has none.
+    private static func longestWord(in text: String) -> String? {
+        text.split(whereSeparator: { !$0.isLetter }).max { $0.count < $1.count }.map { String($0) }
+    }
+
+    private func waitForSearch(_ tab: ReaderTab, query: String, started: Date) {
         guard tab.searchDone || Date().timeIntervalSince(started) > 20 else {
-            return after(0.2) { waitForSearch(tab, started: started) }
+            return after(0.2) { waitForSearch(tab, query: query, started: started) }
         }
-        report("search for \"pipeline\": \(tab.hits.count) hits\(tab.searchTruncated ? " (truncated)" : "") in \(decimal(Date().timeIntervalSince(started), 2)) s")
+        report("search for \"\(query)\": \(tab.hits.count) hits\(tab.searchTruncated ? " (truncated)" : "") in \(decimal(Date().timeIntervalSince(started), 2)) s")
         tab.showHit(step: 1)
         after(0.8) {
             capture("search.png")

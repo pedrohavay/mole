@@ -57,6 +57,7 @@
 "edr.idle" = "EDR em espera";
 
 /* Errors */
+"error.book.drm" = "Este livro é protegido por DRM.";
 "error.core.unknown" = "Erro desconhecido no núcleo de leitura.";
 "error.library.title" = "Não foi possível abrir a biblioteca";
 "error.library.notOpened" = "A biblioteca não foi aberta.";
@@ -74,11 +75,12 @@
 "import.progress" = "Adicionando %ld…";
 "import.failed.title" = "Alguns arquivos não foram adicionados";
 "import.failed.detail" = "Não foi possível ler: %@.";
-"import.panel.message" = "Escolha livros EPUB ou pastas de livros.";
+"import.drm.detail" = "Protegidos por DRM, que o Mole não consegue abrir: %@.";
+"import.panel.message" = "Escolha livros (EPUB, MOBI, FB2 ou texto) ou pastas de livros.";
 "import.folder.progress" = "Adicionando livros das pastas…";
 "import.folder.title" = "Adicionar os livros de “%@”";
 "import.folders.title" = "Adicionar os livros de %ld pastas";
-"import.folder.detail" = "O Mole adiciona todos os EPUBs da pasta e das subpastas dela.";
+"import.folder.detail" = "O Mole adiciona todos os livros da pasta e das subpastas dela: arquivos EPUB, MOBI, PRC, FB2 e de texto.";
 "import.folder.collections" = "Criar coleções a partir das pastas";
 "import.folder.collections.note" = "Cada pasta com livros vira uma coleção com o nome dela.";
 "import.folder.sync" = "Manter esta pasta sincronizada";
@@ -86,7 +88,7 @@
 "import.folder.sync.note" = "O Mole adiciona os livros que aparecerem aqui depois e atualiza os que mudarem. Um livro cujo arquivo sair da pasta fica marcado, nunca é removido.";
 "import.folder.action" = "Adicionar Livros";
 "import.folder.none.title" = "Nenhum livro encontrado";
-"import.folder.none.detail" = "Não há arquivos EPUB nas pastas que você escolheu.";
+"import.folder.none.detail" = "Não há arquivos EPUB, MOBI, PRC, FB2 ou de texto nas pastas que você escolheu.";
 "sync.failed" = "Alguns livros de “%@” não foram sincronizados";
 "folder.remove.failed" = "Não foi possível parar de sincronizar a pasta";
 
@@ -94,7 +96,7 @@
 "library.add" = "Adicionar Livros…";
 "library.add.help" = "Adicionar livros (⌘O)";
 "library.empty.title" = "Sua estante está vazia";
-"library.empty.message" = "Adicione livros EPUB para começar a ler. Só as letras acendem; o resto da tela fica escuro.";
+"library.empty.message" = "Adicione livros EPUB, MOBI, FB2 ou de texto para começar a ler. Só as letras acendem; o resto da tela fica escuro.";
 "library.noResults.title" = "Nenhum resultado";
 "library.noResults.message" = "Nenhum livro corresponde a “%@”.";
 "library.options" = "Opções";
@@ -136,7 +138,7 @@
 "shelf.unread" = "Não Iniciados";
 "shelf.finished" = "Concluídos";
 "shelf.empty.title" = "Nada aqui ainda";
-"shelf.empty.all" = "Adicione livros EPUB para começar a ler.";
+"shelf.empty.all" = "Adicione livros EPUB, MOBI, FB2 ou de texto para começar a ler.";
 "shelf.empty.reading" = "Os livros que você começar aparecem aqui até você terminá-los.";
 "shelf.empty.unread" = "Os livros que você ainda não abriu aparecem aqui.";
 "shelf.empty.finished" = "Os livros que você ler até o fim aparecem aqui.";
@@ -316,7 +318,7 @@
 "settings.updates.note" = "O Mole procura uma versão nova uma vez por dia e pergunta antes de instalá-la.";
 "settings.folders" = "Pastas sincronizadas";
 "settings.folders.empty" = "Nenhuma pasta está sincronizada. Escolha uma pasta em Arquivo › Adicionar Livros… e ative Manter esta pasta sincronizada.";
-"settings.folders.note" = "O Mole acompanha estas pastas e adiciona arquivos EPUB novos ou alterados. Um livro cujo arquivo sair da pasta fica marcado na biblioteca até você removê-lo.";
+"settings.folders.note" = "O Mole acompanha estas pastas e adiciona livros novos ou alterados. Um livro cujo arquivo sair da pasta fica marcado na biblioteca até você removê-lo.";
 "settings.folders.syncNow" = "Sincronizar Agora";
 "settings.folders.remove" = "Parar de Sincronizar";
 "settings.folders.remove.help" = "Parar de sincronizar esta pasta. Os livros dela continuam na biblioteca.";
