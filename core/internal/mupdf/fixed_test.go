@@ -1,6 +1,7 @@
 package mupdf
 
 import (
+	"bytes"
 	"testing"
 
 	"mole/core/internal/testbook"
@@ -74,5 +75,20 @@ func TestPasswordPDF(t *testing.T) {
 	defer doc.Close()
 	if !doc.NeedsPassword() {
 		t.Error("NeedsPassword() = false for a PDF with a user password")
+	}
+}
+
+// TestPageCountLimit checks that a PDF that claims more pages than a book
+// has fails to lay out instead of making room for all of them.
+func TestPageCountLimit(t *testing.T) {
+	data := bytes.Replace(testbook.SamplePDF().Bytes(), []byte("/Count 6"), []byte("/Count 900000000"), 1)
+	doc, err := Open(testbook.File(t, "huge.pdf", data), "")
+	if err != nil {
+		return // refusing the file is as good
+	}
+	defer doc.Close()
+	// MuPDF takes the count from the file.
+	if pages, err := doc.Layout(600, 800, 16); err == nil {
+		t.Errorf("Layout = %d pages, want an error past 100000", pages)
 	}
 }

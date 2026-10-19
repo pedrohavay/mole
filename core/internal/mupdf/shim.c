@@ -306,6 +306,10 @@ static void forget_pages(md_doc *d) {
     d->chapters = 0;
 }
 
+// MD_MAX_PAGES is the most pages a document of fixed pages may have. MuPDF
+// takes a PDF's page count from the file, which could claim any number.
+#define MD_MAX_PAGES 100000
+
 // fixed_layout makes each page of a document of fixed pages a chapter of
 // its own, which keeps anchors cheap: an offset counts characters within
 // its page, and no page before it needs to be measured.
@@ -319,6 +323,9 @@ static int fixed_layout(md_doc *d, char *err, int errlen) {
     fz_var(first);
     fz_try(ctx) {
         int pages = fz_count_pages(ctx, d->doc);
+        if (pages < 0 || pages > MD_MAX_PAGES) {
+            fz_throw(ctx, FZ_ERROR_LIMIT, "%d pages, more than %d", pages, MD_MAX_PAGES);
+        }
         skip = calloc((size_t)pages + 1, sizeof *skip);
         first = calloc((size_t)pages + 1, sizeof *first);
         if (skip == NULL || first == NULL) {

@@ -64,7 +64,7 @@ type Session struct {
 	// measured as they are first shown, and a zoom, and the view scrolls
 	// within pages larger than it by a pan, in view points.
 	fixed      bool
-	sizes      []pageSize
+	sizes      map[int]pageSize
 	zoom       Zoom
 	panX, panY float64
 
@@ -200,7 +200,7 @@ func (s *Session) layout(geo Geometry, fontSize float64) error {
 		s.forgetText()
 		s.pictures = map[int][]mupdf.Rect{}
 		if s.fixed {
-			s.sizes = make([]pageSize, pages)
+			s.sizes = map[int]pageSize{}
 		}
 		s.pages = pages
 		s.resolveChapters()

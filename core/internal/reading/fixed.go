@@ -63,8 +63,7 @@ const maxZoom = 8
 // pages or their width.
 var zoomSteps = []float64{0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8}
 
-// pageSize is the size of a fixed page in points; the zero value is a size
-// not measured yet.
+// pageSize is the size of a fixed page in points.
 type pageSize struct {
 	width, height float64
 }
@@ -114,19 +113,20 @@ func (s *Session) frames() ([]pageFrame, error) {
 
 // size returns the size of page in points.
 func (s *Session) size(page int) (pageSize, error) {
-	if page < 0 || page >= len(s.sizes) {
+	if size, ok := s.sizes[page]; ok {
+		return size, nil
+	}
+	if page < 0 || page >= s.pages {
 		return pageSize{}, fmt.Errorf("reading: no page %d", page)
 	}
-	if s.sizes[page] == (pageSize{}) {
-		w, h, err := s.doc.PageSize(page)
-		if err != nil {
-			return pageSize{}, err
-		}
-		if w <= 0 || h <= 0 {
-			return pageSize{}, fmt.Errorf("reading: page %d has no area", page)
-		}
-		s.sizes[page] = pageSize{width: w, height: h}
+	w, h, err := s.doc.PageSize(page)
+	if err != nil {
+		return pageSize{}, err
 	}
+	if w <= 0 || h <= 0 {
+		return pageSize{}, fmt.Errorf("reading: page %d has no area", page)
+	}
+	s.sizes[page] = pageSize{width: w, height: h}
 	return s.sizes[page], nil
 }
 
