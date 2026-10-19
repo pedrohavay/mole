@@ -10,6 +10,24 @@ struct Anchor: Codable, Hashable, Comparable {
     static func < (a: Anchor, b: Anchor) -> Bool {
         (a.chapter, a.offset) < (b.chapter, b.offset)
     }
+
+    /// EndOfBook is a place past the end of any book.
+    static let endOfBook = Anchor(chapter: Int(Int32.max), offset: 0)
+
+    /// Reports whether scalar takes up an offset, as the core counts them:
+    /// whitespace, invisible format characters and hyphens do not.
+    static func counts(_ scalar: Unicode.Scalar) -> Bool {
+        if scalar.properties.isWhitespace || scalar.properties.generalCategory == .format { return false }
+        switch scalar {
+        case "-", "\u{00AD}", "\u{2010}", "\u{2011}": return false
+        default: return true
+        }
+    }
+
+    /// Returns the number of characters of text that take up an offset.
+    static func count<Text: StringProtocol>(in text: Text) -> Int {
+        text.unicodeScalars.reduce(0) { $0 + (counts($1) ? 1 : 0) }
+    }
 }
 
 /// TextRange is a stretch of text from start up to, not including, end.
@@ -41,6 +59,17 @@ struct TextRange: Codable, Hashable {
 /// TextRect is a box of text on screen, in view points from the top left.
 private struct TextRect: Decodable {
     let x, y, width, height: Double
+}
+
+/// Paragraph is a paragraph of a book, or the part of one on a page.
+struct Paragraph: Decodable, Hashable {
+    let range: TextRange
+    /// Text has whitespace collapsed to single spaces. Counting its
+    /// characters as Anchor does gives the offsets of range.
+    let text: String
+    /// Continued is set when the paragraph goes on from the page before, so
+    /// that it is the rest of the Paragraph before it.
+    let continued: Bool
 }
 
 extension Session {
@@ -75,6 +104,17 @@ extension Session {
             try CoreCall.decode([TextRect].self, mole_session_range_rects(handle, $0))
         }
         return rects.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }
+    }
+
+    /// Returns the text of range a paragraph at a time, on screen or not.
+    /// A positive limit stops at the end of the paragraph that brings the
+    /// characters returned to limit.
+    func paragraphs(of range: TextRange, limit: Int = 0) throws -> [Paragraph] {
+        try checkOpen()
+        let json = try CoreCall.encode(range)
+        return try CoreCall.withCString(json) {
+            try CoreCall.decode([Paragraph].self, mole_session_paragraphs(handle, $0, Int64(limit)))
+        }
     }
 
     /// Shows the screen that holds anchor; it reports whether the page changed.

@@ -16,6 +16,9 @@ final class EDRMetalView: NSView, NSMenuItemValidation {
     var canCopy: (() -> Bool)?
     /// OnLookUp receives a force click or the trackpad's look-up gesture.
     var onLookUp: ((CGPoint) -> Void)?
+    /// PageAccessibility is what VoiceOver reads of the page; see
+    /// PageAccessibility.swift.
+    let pageAccessibility = PageAccessibility()
 
     enum MouseStep {
         case down, dragged, up

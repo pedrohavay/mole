@@ -22,6 +22,7 @@ struct LibraryView: View {
                 Text(model.shelf.title)
                     .font(Theme.heading)
                     .foregroundStyle(Theme.text)
+                    .accessibilityAddTraits(.isHeader)
                 Text(L10n.bookCount(books.count))
                     .font(Theme.label)
                     .foregroundStyle(Theme.tertiary)
@@ -111,6 +112,7 @@ struct LibraryView: View {
         .focusable()
         .focused($gridFocused)
         .focusEffectDisabled()
+        .accessibilityLabel(model.shelf.title)
         .onMoveCommand { direction in move(direction, in: books) }
         .onKeyPress(.return) {
             guard let book = selected(in: books) else { return .ignored }

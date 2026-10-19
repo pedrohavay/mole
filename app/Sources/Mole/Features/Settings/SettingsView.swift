@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 /// SettingsView is the Settings window: appearance, reading and the list of
@@ -138,9 +139,73 @@ private struct ReadingSettings: View {
                     .font(Theme.caption)
                     .foregroundStyle(Theme.secondary)
             }
+            ReadAloudSettings()
         }
         .formStyle(.grouped)
-        .frame(height: 400)
+        .frame(height: 650)
+    }
+}
+
+/// ReadAloudSettings pick the voice and the speed of reading aloud. The
+/// voices offered speak the system's language or the open book's.
+@MainActor
+private struct ReadAloudSettings: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var readAloud = model.readAloud
+        Section(L10n.text("settings.readAloud")) {
+            Picker(L10n.text("readAloud.voice"), selection: $readAloud.voiceIdentifier) {
+                Text(L10n.text("readAloud.voice.automatic")).tag("")
+                ForEach(languages, id: \.self) { language in
+                    Section(Locale.current.localizedString(forIdentifier: language) ?? language) {
+                        ForEach(voices.filter { $0.language == language }, id: \.identifier) { voice in
+                            Text(name(of: voice)).tag(voice.identifier)
+                        }
+                    }
+                }
+            }
+            LabeledContent(L10n.text("readAloud.rate")) {
+                HStack(spacing: Theme.Space.s) {
+                    Image(systemName: "tortoise").foregroundStyle(Theme.secondary).accessibilityHidden(true)
+                    Slider(value: $readAloud.rate, in: ReadAloud.rates)
+                        .tint(model.accent)
+                        .accessibilityLabel(L10n.text("readAloud.rate"))
+                    Image(systemName: "hare").foregroundStyle(Theme.secondary).accessibilityHidden(true)
+                }
+                .frame(width: 220)
+            }
+            Text(L10n.text("readAloud.note"))
+                .font(Theme.caption)
+                .foregroundStyle(Theme.secondary)
+        }
+    }
+
+    /// Voices are the installed voices in the system's language and the
+    /// open book's, and the voice picked before if it speaks neither.
+    private var voices: [AVSpeechSynthesisVoice] {
+        let languages = [Locale.preferredLanguages.first, model.activeTab?.language].compactMap { $0 }
+        var voices = ReadAloud.voices(in: languages)
+        let picked = model.readAloud.voiceIdentifier
+        if !picked.isEmpty, !voices.contains(where: { $0.identifier == picked }),
+           let voice = AVSpeechSynthesisVoice(identifier: picked) {
+            voices.append(voice)
+        }
+        return voices
+    }
+
+    /// Languages are the languages of voices, each once, in order.
+    private var languages: [String] {
+        var seen = Set<String>()
+        return voices.map(\.language).filter { seen.insert($0).inserted }
+    }
+
+    private func name(of voice: AVSpeechSynthesisVoice) -> String {
+        switch voice.quality {
+        case .enhanced: L10n.format("readAloud.voice.enhanced", voice.name)
+        case .premium: L10n.format("readAloud.voice.premium", voice.name)
+        default: voice.name
+        }
     }
 }
 
@@ -178,6 +243,8 @@ struct Shortcut: Identifiable {
         Shortcut(keys: "⌃⇥  ⌃⇧⇥", action: "shortcut.cycleTabs"),
         Shortcut(keys: "⌃⌘S", action: "shortcut.sidebar"),
         Shortcut(keys: "⌥⌘↑  ⌥⌘↓", action: "shortcut.light"),
+        Shortcut(keys: "⇧⌘R", action: "shortcut.readAloud"),
+        Shortcut(keys: "⌘.  ⎋", action: "shortcut.stopReadAloud"),
         Shortcut(keys: "⌘,", action: "shortcut.settings"),
     ]
 }
@@ -190,7 +257,7 @@ private struct ShortcutsSettings: View {
             group(L10n.text("settings.shortcuts.window"), Shortcut.window)
         }
         .formStyle(.grouped)
-        .frame(height: 540)
+        .frame(height: 600)
     }
 
     private func group(_ title: String, _ shortcuts: [Shortcut]) -> some View {

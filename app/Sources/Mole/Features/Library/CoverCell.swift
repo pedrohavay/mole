@@ -50,9 +50,12 @@ struct CoverCell: View {
         .help(book.author.isEmpty ? book.title : "\(book.title) · \(book.author)")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(book.author.isEmpty ? book.title : "\(book.title), \(book.author)")
-        .accessibilityValue(caption)
+        .accessibilityValue(book.lastOpened == nil ? L10n.text("book.unread") : caption)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction(named: L10n.text("action.open")) { model.open(book) }
+        .accessibilityAction { model.open(book) }
+        .accessibilityAction(named: L10n.text("book.info")) { showInfo = true }
+        .accessibilityAction(named: L10n.text("action.revealInFinder")) { model.revealInFinder(book) }
+        .accessibilityAction(named: L10n.text("library.remove")) { model.remove(book) }
     }
 
     @ViewBuilder private var cover: some View {

@@ -16,6 +16,7 @@ struct MenuState: Equatable {
     var hasSelection = false
     var isBookmarked = false
     var hasHits = false
+    var readAloud = ReadAloud.State.idle
 
     @MainActor
     init(_ model: AppModel) {
@@ -30,6 +31,7 @@ struct MenuState: Equatable {
         hasSelection = model.activeTab?.selection != nil
         isBookmarked = model.activeTab?.isBookmarked ?? false
         hasHits = !(model.activeTab?.hits.isEmpty ?? true)
+        readAloud = model.readAloud.state
     }
 }
 
@@ -120,6 +122,13 @@ struct MoleCommands: Commands {
             Button(L10n.text("translate.action"), action: perform { $0.activeTab?.translateSelection() })
                 .disabled(state?.hasSelection != true || !Self.canTranslate)
             Divider()
+            Button(readAloudTitle, action: perform { $0.toggleReadAloud() })
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(state?.hasBook != true)
+            Button(L10n.text("readAloud.stop"), action: perform { $0.readAloud.stop() })
+                .keyboardShortcut(".")
+                .disabled((state?.readAloud ?? .idle) == .idle)
+            Divider()
             ForEach(PanelPage.allCases) { page in
                 Button(page.title, action: perform { $0.showPanel(page) })
                     .disabled(state?.hasBook != true)
@@ -184,6 +193,15 @@ struct MoleCommands: Commands {
             Button(L10n.text("menu.source")) {
                 if let url = URL(string: "https://github.com/pedrohavay/mole") { NSWorkspace.shared.open(url) }
             }
+        }
+    }
+
+    /// ReadAloudTitle names what the Read Aloud item does now.
+    private var readAloudTitle: String {
+        switch state?.readAloud ?? .idle {
+        case .idle: L10n.text("readAloud.start")
+        case .speaking: L10n.text("readAloud.pause")
+        case .paused: L10n.text("readAloud.resume")
         }
     }
 

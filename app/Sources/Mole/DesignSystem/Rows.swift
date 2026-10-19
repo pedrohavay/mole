@@ -16,6 +16,8 @@ struct SectionHeader<Trailing: View>: View {
         .padding(.horizontal, Theme.Space.s)
         .padding(.top, Theme.Space.l)
         .padding(.bottom, Theme.Space.xs)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -48,6 +50,9 @@ struct SidebarRow: View {
                 }
             }
             .frame(width: 18)
+            // The icon only decorates the row; VoiceOver would read a
+            // checkmark symbol as a selected state.
+            .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
                     .font(Theme.body)
@@ -121,8 +126,12 @@ struct TabButton: View {
         .onTapGesture(perform: onSelect)
         .onHover { hovering = $0 }
         .animation(Theme.hoverAnimation, value: hovering)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
         .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { onSelect() }
+        .accessibilityActions {
+            if let onClose { Button(L10n.text("tab.close"), action: onClose) }
+        }
     }
 }

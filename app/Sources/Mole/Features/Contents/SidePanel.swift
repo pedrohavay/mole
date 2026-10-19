@@ -20,6 +20,8 @@ struct SidePanel: View {
         }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Theme.sidebar)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(model.panelPage.title)
     }
 
     private var header: some View {
@@ -105,6 +107,7 @@ struct ContentsList: View {
             .hoverable(selected: current)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(chapter.title)
         .accessibilityValue(L10n.format("contents.page", chapter.page + 1))
         .accessibilityAddTraits(current ? .isSelected : [])
     }
@@ -120,6 +123,7 @@ struct PanelTitle<Trailing: View>: View {
             Text(title)
                 .font(Theme.font(13, .semibold))
                 .foregroundStyle(Theme.text)
+                .accessibilityAddTraits(.isHeader)
             Spacer()
             trailing
         }

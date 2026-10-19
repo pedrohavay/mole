@@ -201,8 +201,11 @@
 "sidebar.open.empty" = "Abra um livro na biblioteca.";
 "sidebar.recent" = "Recentes";
 "sidebar.recent.help" = "Um clique mostra o livro na biblioteca; dois cliques o abrem.";
+"sidebar.label" = "Barra lateral";
+"sidebar.lastRead" = "lido %@";
 "tab.library" = "Biblioteca";
 "tab.close" = "Fechar";
+"tabs.label" = "Abas";
 
 /* Status bar */
 "status.pages.single" = "%ld de %ld · %ld%%";
@@ -210,6 +213,27 @@
 "status.pages.range" = "%ld–%ld de %ld · %ld%%";
 "time.left.chapter" = "%@ até o fim do capítulo";
 "time.left.book" = "%@ até o fim do livro";
+"status.label" = "Barra de status";
+
+/* A página, como o VoiceOver a lê */
+"reader.role" = "página";
+"reader.page" = "Página %ld de %ld";
+"reader.pages" = "Páginas %ld e %ld de %ld";
+"reader.nextPage" = "Próxima Página";
+"reader.previousPage" = "Página Anterior";
+
+/* Leitura em voz alta */
+"readAloud.start" = "Ler em Voz Alta";
+"readAloud.start.help" = "Ler em voz alta (⇧⌘R)";
+"readAloud.pause" = "Pausar Leitura em Voz Alta";
+"readAloud.resume" = "Retomar Leitura em Voz Alta";
+"readAloud.stop" = "Parar Leitura em Voz Alta";
+"readAloud.voice" = "Voz";
+"readAloud.voice.automatic" = "Automática";
+"readAloud.voice.enhanced" = "%@ (Melhorada)";
+"readAloud.voice.premium" = "%@ (Premium)";
+"readAloud.rate" = "Velocidade";
+"readAloud.note" = "A opção automática escolhe uma voz que fala o idioma do livro. Para adicionar vozes, vá em Ajustes do Sistema › Acessibilidade › Conteúdo Falado › Voz do Sistema › Gerenciar Vozes.";
 
 /* Settings */
 "settings.general" = "Geral";
@@ -224,6 +248,7 @@
 "settings.text" = "Texto";
 "settings.light" = "Luz";
 "settings.light.note" = "O brilho é uma fração do que a tela consegue mostrar acima do branco SDR neste momento. Sem EDR, as letras param no branco SDR.";
+"settings.readAloud" = "Leitura em voz alta";
 "settings.shortcuts.reading" = "Durante a leitura";
 "settings.shortcuts.window" = "Janela e abas";
 
@@ -245,6 +270,8 @@
 "shortcut.tabs" = "Livros abertos, na ordem das abas";
 "shortcut.cycleTabs" = "Próxima aba ou aba anterior";
 "shortcut.sidebar" = "Mostrar ou ocultar a barra lateral";
+"shortcut.readAloud" = "Ler em voz alta, pausar ou retomar";
+"shortcut.stopReadAloud" = "Parar a leitura em voz alta";
 "shortcut.settings" = "Ajustes";
 
 /* Key names */

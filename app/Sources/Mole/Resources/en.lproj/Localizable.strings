@@ -201,8 +201,11 @@
 "sidebar.open.empty" = "Open a book from the library.";
 "sidebar.recent" = "Recent";
 "sidebar.recent.help" = "Click to find it in the library, double-click to open it.";
+"sidebar.label" = "Sidebar";
+"sidebar.lastRead" = "last read %@";
 "tab.library" = "Library";
 "tab.close" = "Close";
+"tabs.label" = "Tabs";
 
 /* Status bar */
 "status.pages.single" = "%ld of %ld · %ld%%";
@@ -210,6 +213,27 @@
 "status.pages.range" = "%ld–%ld of %ld · %ld%%";
 "time.left.chapter" = "%@ left in chapter";
 "time.left.book" = "%@ left in book";
+"status.label" = "Status bar";
+
+/* The page, as VoiceOver reads it */
+"reader.role" = "page";
+"reader.page" = "Page %ld of %ld";
+"reader.pages" = "Pages %ld and %ld of %ld";
+"reader.nextPage" = "Next Page";
+"reader.previousPage" = "Previous Page";
+
+/* Reading aloud */
+"readAloud.start" = "Read Aloud";
+"readAloud.start.help" = "Read aloud (⇧⌘R)";
+"readAloud.pause" = "Pause Reading Aloud";
+"readAloud.resume" = "Resume Reading Aloud";
+"readAloud.stop" = "Stop Reading Aloud";
+"readAloud.voice" = "Voice";
+"readAloud.voice.automatic" = "Automatic";
+"readAloud.voice.enhanced" = "%@ (Enhanced)";
+"readAloud.voice.premium" = "%@ (Premium)";
+"readAloud.rate" = "Speed";
+"readAloud.note" = "Automatic picks a voice that speaks the language of the book. To add voices, go to System Settings › Accessibility › Spoken Content › System Voice › Manage Voices.";
 
 /* Settings */
 "settings.general" = "General";
@@ -224,6 +248,7 @@
 "settings.text" = "Text";
 "settings.light" = "Light";
 "settings.light.note" = "Brightness is a share of what the screen can show above SDR white right now. Without EDR the text stops at SDR white.";
+"settings.readAloud" = "Reading aloud";
 "settings.shortcuts.reading" = "While reading";
 "settings.shortcuts.window" = "Window and tabs";
 
@@ -245,6 +270,8 @@
 "shortcut.tabs" = "Open books, in tab order";
 "shortcut.cycleTabs" = "Next or previous tab";
 "shortcut.sidebar" = "Show or hide the sidebar";
+"shortcut.readAloud" = "Read aloud, pause or resume";
+"shortcut.stopReadAloud" = "Stop reading aloud";
 "shortcut.settings" = "Settings";
 
 /* Key names */

@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import NaturalLanguage
 import Observation
 
 /// PageMark is something painted under the text of the visible pages, in
@@ -9,10 +10,23 @@ struct PageMark: Equatable {
         case highlight(color: Int)
         case selection
         case hit(current: Bool)
+        /// Speech marks the sentence being read aloud.
+        case speech
     }
 
     var rect: CGRect
     var kind: Kind
+}
+
+/// PageParagraph is a paragraph on the visible pages, or the part of one on
+/// a page, with the boxes of its lines in view points from the top left.
+struct PageParagraph: Equatable {
+    let range: TextRange
+    let text: String
+    let lines: [CGRect]
+
+    /// Frame is the box around the lines.
+    var frame: CGRect { lines.dropFirst().reduce(lines.first ?? .zero) { $0.union($1) } }
 }
 
 /// ReaderTab is an open book: its session with the core, what the reader
@@ -29,10 +43,15 @@ final class ReaderTab: Identifiable {
     private(set) var revision = 0
     /// VisibleRange is the text on the visible pages.
     private(set) var visibleRange: TextRange?
-    /// Marks are the highlights, selection and search hits on screen.
+    /// Marks are the highlights, selection, search hits and the sentence
+    /// read aloud on screen.
     private(set) var marks: [PageMark] = []
-    /// PageText is the text on screen, kept only while VoiceOver runs.
-    private(set) var pageText = ""
+    /// Spoken is the sentence being read aloud, if any.
+    private(set) var spoken: TextRange?
+    /// Paragraphs caches the paragraphs of the visible pages for the
+    /// revision they were read at; they are read only when asked for.
+    @ObservationIgnored private var paragraphs: (revision: Int, list: [PageParagraph])?
+    @ObservationIgnored private var detectedLanguage: String??
     /// TimeLeft estimates the reading time to the end of the chapter and of
     /// the book, at the reader's pace; nil until a screen of text is known.
     private(set) var timeLeft: TimeLeft?
@@ -121,9 +140,6 @@ final class ReaderTab: Identifiable {
     private func refresh() {
         if let state = try? session.state() { self.state = state }
         visibleRange = try? session.visibleRange()
-        if NSWorkspace.shared.isVoiceOverEnabled, let visibleRange {
-            pageText = (try? session.text(of: visibleRange)) ?? ""
-        }
         screenShownAt = Date()
         screenCharacters = visibleRange.flatMap(Self.characters(in:))
         if let screenCharacters, screenCharacters >= 200 {
@@ -162,6 +178,52 @@ final class ReaderTab: Identifiable {
         chapters.last { $0.level == 0 && $0.page <= state.page }
     }
 
+    /// PageDescription says which pages are shown and in which chapter, as
+    /// VoiceOver announces a new screen.
+    var pageDescription: String {
+        guard state.pages > 0 else { return book.title }
+        let pages = state.lastVisible > state.page
+            ? L10n.format("reader.pages", state.page + 1, state.lastVisible + 1, state.pages)
+            : L10n.format("reader.page", state.page + 1, state.pages)
+        guard let chapter = currentChapter?.title, !chapter.isEmpty else { return pages }
+        return "\(pages), \(chapter)"
+    }
+
+    /// Returns the paragraphs of the visible pages with their lines, in
+    /// reading order. They are read from the core the first time they are
+    /// asked for after the pages change.
+    func visibleParagraphs() -> [PageParagraph] {
+        if let paragraphs, paragraphs.revision == revision { return paragraphs.list }
+        var list: [PageParagraph] = []
+        if let visibleRange, let parts = try? session.paragraphs(of: visibleRange) {
+            for part in parts {
+                guard let lines = try? session.rects(of: part.range), !lines.isEmpty else { continue }
+                list.append(PageParagraph(range: part.range, text: part.text, lines: lines))
+            }
+        }
+        paragraphs = (revision, list)
+        return list
+    }
+
+    /// Language is the language of the book's text, as a BCP 47 code such as
+    /// "en" or "pt", guessed from a few pages of text from where the reader
+    /// first asked; nil when unclear. A single page, such as a copyright
+    /// page full of names, is too little to tell.
+    var language: String? {
+        if let detectedLanguage { return detectedLanguage }
+        guard let start = visibleRange?.start,
+              let ahead = try? session.paragraphs(of: TextRange(start: start, end: .endOfBook), limit: 4000)
+        else { return nil }
+        let text = ahead.map(\.text).joined(separator: "\n")
+        let recognizer = NLLanguageRecognizer()
+        recognizer.processString(text)
+        let language = recognizer.dominantLanguage.map(\.rawValue)
+        // Near the end of a short book there may be too little text; guess
+        // again later rather than keep a poor guess.
+        if text.count >= 1000 { detectedLanguage = .some(language) }
+        return language
+    }
+
     // MARK: Marks
 
     private func refreshMarks() {
@@ -180,8 +242,16 @@ final class ReaderTab: Identifiable {
         for (index, hit) in hits.enumerated() where hit.range.overlaps(visible) {
             add(hit.range, .hit(current: index == currentHit))
         }
+        if let spoken { add(spoken, .speech) }
         if let selection { add(selection, .selection) }
         if marks != self.marks { self.marks = marks }
+    }
+
+    /// Marks range as the sentence being read aloud, or clears the mark.
+    func markSpoken(_ range: TextRange?) {
+        guard range != spoken else { return }
+        spoken = range
+        refreshMarks()
     }
 
     // MARK: Selection

@@ -43,6 +43,12 @@ Mole is in early development and has no release builds yet.
   press ⌃⌘D) and Apple's translation of a selection on macOS 14.4 and later.
 - An estimate of the reading time left in the chapter and in the book,
   learned from your own pace as you turn pages.
+- Reading aloud with the system voices, from the top of the screen or the
+  selection, with the sentence being read lit under the text and the pages
+  turning on their own.
+- VoiceOver support: the page is read a paragraph at a time, each new page
+  and chapter is announced, and VoiceOver's actions and scroll commands turn
+  the pages. Mole also follows Reduce Motion and Increase Contrast.
 - A keyboard shortcut for every reading control, and arrow-key navigation in
   the library.
 - English and Brazilian Portuguese, picked from the system language.
@@ -84,6 +90,14 @@ in a color, adds a note, copies it, or searches the book for it. The side
 panel (⌥⌘C) holds the table of contents, the bookmarks, the notes and the
 search.
 
+The speaker button in the status bar, or Book > Read Aloud (⇧⌘R), reads the
+book aloud from the top of the screen, or from the selection if there is
+one, and goes on into the next chapters. The same button and shortcut pause
+and resume; Esc or the stop button ends it. Settings > Reading picks the
+voice and the speed. The automatic voice speaks the language of the book;
+more voices can be added in System Settings > Accessibility > Spoken
+Content.
+
 ### Keyboard shortcuts
 
 While reading:
@@ -99,7 +113,7 @@ While reading:
 | C | Next text color |
 | T or ⌥⌘C | Show or hide the side panel |
 | F or ⌃⌘F | Full screen |
-| Esc | Clear the selection, or leave full screen |
+| Esc | Clear the selection, stop reading aloud, or leave full screen |
 | ⌃⌘D or force click | Look up the selection or the word in the dictionary |
 
 Anywhere in the window:
@@ -116,6 +130,8 @@ Anywhere in the window:
 | ⌃⇥, ⌃⇧⇥ | Next or previous tab |
 | ⌃⌘S | Show or hide the sidebar |
 | ⌥⌘↑, ⌥⌘↓ | Brighter or dimmer text |
+| ⇧⌘R | Read aloud, pause or resume |
+| ⌘. | Stop reading aloud |
 | ⌘, | Settings |
 
 Help > Keyboard Shortcuts shows the same list in the app.
@@ -140,7 +156,7 @@ the SwiftUI app, and assembles `build/Mole.app`. The other targets:
 |--------|--------------|
 | `make run` | Builds and opens the app. |
 | `make test` | Runs the Go and Swift tests. Set `MOLE_TEST_EPUB` to an EPUB file to add the tests that open a real book. |
-| `make verify` | Runs the app's self-check, which captures the library, a book and Settings into `build/verify`. Set `BOOK` to add an EPUB first. |
+| `make verify` | Runs the app's self-check, which captures the library, a book and Settings into `build/verify`, reads a page aloud and writes the accessibility tree there. Set `BOOK` to add an EPUB first. |
 | `make lint` | Runs `gofmt` and `go vet` on the core. |
 | `make release` | Builds a signed and notarized `build/release/Mole-<version>.zip`; see below. |
 | `make notices` | Regenerates `THIRD_PARTY_NOTICES` after a dependency changes. |

@@ -45,5 +45,7 @@ struct TabStrip: View {
         .frame(height: Theme.Size.bar)
         .background(Theme.surface)
         .hairline(.bottom)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L10n.text("tabs.label"))
     }
 }
