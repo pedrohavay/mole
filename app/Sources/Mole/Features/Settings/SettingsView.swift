@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// SettingsView is the Settings window: appearance, reading and the list of
-/// keyboard shortcuts.
+/// SettingsView is the Settings window: appearance, updates, reading and the
+/// list of keyboard shortcuts.
 @MainActor
 struct SettingsView: View {
     @AppStorage(SettingsTab.storageKey) private var selection = SettingsTab.general
@@ -44,8 +44,10 @@ enum SettingsTab: String {
 @MainActor
 private struct GeneralSettings: View {
     @Environment(AppModel.self) private var model
+    @Environment(Updater.self) private var updater
 
     var body: some View {
+        @Bindable var updater = updater
         Form {
             Section(L10n.text("settings.appearance")) {
                 LabeledContent(L10n.text("settings.accent")) {
@@ -67,9 +69,18 @@ private struct GeneralSettings: View {
                     .font(Theme.caption)
                     .foregroundStyle(Theme.secondary)
             }
+            // Builds without an updater (development and CI) have nothing to set.
+            if updater.isEnabled {
+                Section(L10n.text("settings.updates")) {
+                    Toggle(L10n.text("settings.updates.automatic"), isOn: $updater.checksAutomatically)
+                    Text(L10n.text("settings.updates.note"))
+                        .font(Theme.caption)
+                        .foregroundStyle(Theme.secondary)
+                }
+            }
         }
         .formStyle(.grouped)
-        .frame(height: 260)
+        .frame(height: updater.isEnabled ? 370 : 260)
     }
 
     private func swatch(_ preset: Accent) -> some View {

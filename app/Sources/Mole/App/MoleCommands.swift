@@ -53,9 +53,15 @@ extension FocusedValues {
 /// reach the model through perform.
 struct MoleCommands: Commands {
     let model: AppModel?
+    let updater: Updater
     @FocusedValue(\.menuState) private var state
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            if updater.isEnabled {
+                CheckForUpdatesButton(updater: updater)
+            }
+        }
         CommandGroup(replacing: .newItem) {
             Button(L10n.text("menu.addBooks"), action: perform { $0.chooseBooks() })
                 .keyboardShortcut("o")
@@ -189,5 +195,18 @@ struct MoleCommands: Commands {
                 if let model { body(model) }
             }
         }
+    }
+}
+
+/// CheckForUpdatesButton is the app menu's Check for Updates item. It is a
+/// view of its own because a view follows the updater's changes, which the
+/// menus do not.
+@MainActor
+private struct CheckForUpdatesButton: View {
+    let updater: Updater
+
+    var body: some View {
+        Button(L10n.text("menu.checkForUpdates")) { updater.checkForUpdates() }
+            .disabled(!updater.canCheck)
     }
 }
