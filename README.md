@@ -32,13 +32,17 @@ lives in the dark and needs very little light to find its way.
 
 ### Books
 
-- EPUB, MOBI, PRC, FB2 and plain text books.
+- EPUB, MOBI, PRC, FB2, plain text and PDF books.
+- PDFs keep their printed pages. Mole fits them to the window, one or two
+  side by side, and you can zoom in and scroll. Their text glows like any
+  book's.
 - Pictures in their own colors, never brighter than white. At night,
   diagrams are inverted so their lines glow. Click a picture to zoom in.
 - The book's own text colors if you want them, so a red heading glows red.
 - The book's fonts or one of the Mac's, with your choice of line spacing,
   margins and alignment.
-- A clear message when a book is locked with DRM.
+- A clear message when a book is locked with DRM or a PDF needs a
+  password.
 
 ### Reading
 
@@ -117,6 +121,11 @@ left third or press ← to go back. The sun button in the status bar sets the
 brightness and the text color. The Aa button at the other end sets the
 size, the font, the spacing and how pictures look.
 
+In a PDF, + and − zoom in and out, and the status bar shows the zoom. Click
+it to fit the page or the width. Fonts, spacing and margins do not apply to
+PDFs, and search looks within each page, so it misses a phrase split across
+two pages.
+
 Drag across the text to select it. The bar above the selection can
 highlight it, add a note, copy it or search for it. The side panel (⌥⌘C)
 holds the contents, bookmarks, notes and search.
@@ -135,11 +144,11 @@ While reading:
 
 | Keys | Action |
 |------|--------|
-| → or Space or Page Down | Next page |
-| ← or ⇧Space or Page Up | Previous page |
+| → or Space or Page Down | Next page, or the rest of a zoomed PDF page |
+| ← or ⇧Space or Page Up | Previous page, or back up a zoomed PDF page |
 | Home, End | Beginning or end of the book |
 | ↑, ↓ | Brighter or dimmer text |
-| +, − | Bigger or smaller text |
+| +, − | Bigger or smaller text, or zoom in a PDF |
 | E | Turn HDR on or off |
 | C | Next text color |
 | T or ⌥⌘C | Show or hide the side panel |
