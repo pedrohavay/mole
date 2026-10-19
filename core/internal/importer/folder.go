@@ -97,10 +97,11 @@ func Sync(store *library.Store, folderID int64, now time.Time) (FolderResult, er
 	return r, store.FolderSynced(folder.ID, now)
 }
 
-// folderRoot returns dir as a clean absolute path, or an error if it is not
-// a folder or lies inside the library's Books directory.
+// folderRoot returns dir as an absolute path without symbolic links, the
+// way file system events name it, or an error if it is not a folder or lies
+// inside the library's Books directory.
 func folderRoot(store *library.Store, dir string) (string, error) {
-	root, err := filepath.Abs(dir)
+	root, err := realPath(dir)
 	if err != nil {
 		return "", err
 	}
@@ -111,10 +112,19 @@ func folderRoot(store *library.Store, dir string) (string, error) {
 	if !info.IsDir() {
 		return "", fmt.Errorf("import %s: not a folder", root)
 	}
-	if books := store.BooksDir(); root == books || library.Within(root, books) {
+	if books := realBooksDir(store); root == books || library.Within(root, books) {
 		return "", fmt.Errorf("import %s: the folder is inside the library", root)
 	}
 	return root, nil
+}
+
+// realBooksDir returns the library's Books directory with symbolic links
+// resolved, as a walk from a resolved root names it.
+func realBooksDir(store *library.Store) string {
+	if dir, err := realPath(store.BooksDir()); err == nil {
+		return dir
+	}
+	return store.BooksDir()
 }
 
 // pass is one walk over a folder.
@@ -168,7 +178,7 @@ func (p pass) run() (FolderResult, error) {
 func (p pass) files() ([]string, []Failure, error) {
 	var files []string
 	var failed []Failure
-	books := p.store.BooksDir()
+	books := realBooksDir(p.store)
 	err := filepath.WalkDir(p.root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if path == p.root {

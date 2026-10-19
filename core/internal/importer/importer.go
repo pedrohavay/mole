@@ -65,7 +65,7 @@ type imported struct {
 }
 
 func importFile(store *library.Store, path string, now time.Time) (imported, error) {
-	abs, err := filepath.Abs(path)
+	abs, err := realPath(path)
 	if err != nil {
 		return imported{}, err
 	}
@@ -176,6 +176,23 @@ func readBook(store *library.Store, abs string, st library.Stamp) (library.Book,
 	return library.Book{
 		Path: copied, OriginalPath: abs, Title: info.Title, Author: info.Author, Cover: info.Cover, Source: st,
 	}, nil
+}
+
+// realPath returns path as an absolute path without symbolic links, so one
+// file has one name whichever way it is reached (/tmp is /private/tmp). A
+// path that does not exist keeps its last element as it is.
+func realPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved, nil
+	}
+	if dir, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
+		return filepath.Join(dir, filepath.Base(abs)), nil
+	}
+	return abs, nil
 }
 
 func stampOf(info fs.FileInfo) library.Stamp {

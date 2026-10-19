@@ -22,6 +22,17 @@ func openStore(t *testing.T) *library.Store {
 	return s
 }
 
+// tempDir returns a new temporary directory without symbolic links in its
+// path, the way Import names the files in it.
+func tempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("EvalSymlinks error: %v", err)
+	}
+	return dir
+}
+
 func booksIn(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -37,7 +48,7 @@ func booksIn(t *testing.T, dir string) []string {
 
 func TestImport(t *testing.T) {
 	store := openStore(t)
-	downloads := t.TempDir()
+	downloads := tempDir(t)
 	original := testbook.Book{Title: "Imported", Chapters: []string{"<p>Hello.</p>"}}.
 		WriteTo(t, filepath.Join(downloads, strings.Repeat("long name ", 20)+".epub"))
 	now := time.Unix(1_700_000_000, 0)
@@ -115,7 +126,7 @@ func TestCopyName(t *testing.T) {
 
 func TestImportIdentity(t *testing.T) {
 	store := openStore(t)
-	dir := t.TempDir()
+	dir := tempDir(t)
 	original := writeBook(t, dir, "a.epub", "First")
 	now := time.Unix(1_700_000_000, 0)
 	b, err := Import(store, original, now)

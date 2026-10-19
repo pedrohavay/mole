@@ -62,7 +62,7 @@ func bookTitles(t *testing.T, store *library.Store) []string {
 
 func TestImportFolder(t *testing.T) {
 	store := openStore(t)
-	root := filepath.Join(t.TempDir(), "Shelf")
+	root := filepath.Join(tempDir(t), "Shelf")
 	writeBook(t, root, "loose.epub", "Loose")
 	writeBook(t, filepath.Join(root, "Essays"), "a.epub", "Essay A")
 	writeBook(t, filepath.Join(root, "Essays"), "b.EPUB", "Essay B")
@@ -160,7 +160,7 @@ func TestImportFolderSkipsTheLibrary(t *testing.T) {
 
 func TestSync(t *testing.T) {
 	store := openStore(t)
-	root := filepath.Join(t.TempDir(), "Library")
+	root := filepath.Join(tempDir(t), "Library")
 	essays := filepath.Join(root, "Essays")
 	a := writeBook(t, essays, "a.epub", "Essay A")
 	b := writeBook(t, essays, "b.epub", "Essay B")
@@ -307,4 +307,19 @@ func sameIDs(got, want []int64) bool {
 	slices.Sort(got)
 	slices.Sort(want)
 	return slices.Equal(got, want)
+}
+
+func TestImportFolderAfterImportThroughALink(t *testing.T) {
+	// On macOS the temporary directory is reached through a symbolic link
+	// (/var is /private/var); a file imported by one name and found again
+	// by the other is still one book.
+	store := openStore(t)
+	dir := t.TempDir()
+	if _, err := Import(store, writeBook(t, dir, "a.epub", "A"), time.Unix(1, 0)); err != nil {
+		t.Fatalf("Import error: %v", err)
+	}
+	r, err := ImportFolder(store, dir, FolderOptions{}, time.Unix(2, 0))
+	if err != nil || r.Found != 1 || len(r.Added) != 0 {
+		t.Errorf("ImportFolder = %+v, %v; want the book found and nothing added", r, err)
+	}
 }
