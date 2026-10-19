@@ -177,7 +177,8 @@ struct Verifier {
         let startPage = tab.state.page
         let started = Date()
         reader.start(tab, from: paragraphs[max(0, paragraphs.count - 2)].range.start)
-        report("read aloud: \(reader.state) from page \(startPage + 1), language \(tab.language ?? "-"), voice \(ReadAloud.voice(for: tab.language, picked: reader.voiceIdentifier)?.name ?? "system")")
+        let declared = ((try? tab.session.language()) ?? nil) ?? "none"
+        report("read aloud: \(reader.state) from page \(startPage + 1), language \(tab.language ?? "-") (declared \(declared)), voice \(ReadAloud.voice(for: tab.language, picked: reader.voiceIdentifier)?.name ?? "system")")
         var last: ReadAloud.Sentence?
         var turnedAt: Int?
         var sentences = 0

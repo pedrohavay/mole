@@ -172,11 +172,15 @@ becomes a mark under the text, and each word the synthesizer reaches turns
 the page when it is not on screen. Reading goes on across chapters until
 the end of the book.
 
-MuPDF does not expose an EPUB's language, so `NLLanguageRecognizer` guesses
-it from a few thousand characters of text, and the voice is the one picked
+The voice speaks the language the book declares, which the core reads from
+the EPUB's `dc:language` (`mole_session_language`; MuPDF keeps no EPUB
+language of its own, and other documents fall back to MuPDF's metadata).
+Without a declaration, `NLLanguageRecognizer` decides only on a long sample
+it is sure of; a page of names, such as a copyright page, is not enough, and
+the user's preferred languages are used instead. The voice is the one picked
 in Settings if it speaks that language, or else the best installed voice for
-it, from the user's region first. Reading stops when the book closes or
-another tab is shown.
+it, from the region the language names, the user's region or the usual one.
+Reading stops when the book closes or another tab is shown.
 
 ## Positions that survive relayout
 

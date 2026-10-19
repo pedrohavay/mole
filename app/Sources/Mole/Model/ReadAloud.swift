@@ -258,24 +258,69 @@ final class ReadAloud {
         }
     }
 
-    // MARK: Voices
+    // MARK: Languages and voices
+
+    /// MinimumSample is how many characters of text a guess of a book's
+    /// language needs; a page of names or a table of contents is too little.
+    static let minimumSample = 2000
+    /// MinimumConfidence is how sure the guess must be to be taken.
+    static let minimumConfidence = 0.9
+
+    /// Returns the language to read a book in, as a BCP 47 tag: the language
+    /// the book declares when it names a real one; else the language of its
+    /// text, when a long sample leaves little doubt; else whichever of the
+    /// user's preferred languages the text is closest to, or the first of
+    /// them. Text is read only when the book declares no language.
+    static func readingLanguage(declared: String?, text: @autoclosure () -> String, preferred: [String]) -> String? {
+        if let declared, let tag = languageTag(declared) { return tag }
+        let sample = text()
+        if sample.count >= minimumSample {
+            let recognizer = NLLanguageRecognizer()
+            recognizer.processString(sample)
+            if let best = recognizer.languageHypotheses(withMaximum: 1).max(by: { $0.value < $1.value }),
+               best.value >= minimumConfidence {
+                return best.key.rawValue
+            }
+        }
+        let languages = preferred.compactMap(languageTag)
+        guard !sample.isEmpty, languages.count > 1 else { return languages.first }
+        let recognizer = NLLanguageRecognizer()
+        recognizer.languageConstraints = languages.map { NLLanguage(rawValue: language(of: $0)) }
+        recognizer.processString(sample)
+        let closest = recognizer.dominantLanguage?.rawValue
+        return languages.first { language(of: $0) == closest } ?? languages.first
+    }
+
+    /// Returns tag with its language written as a two-letter ISO 639 code
+    /// when there is one ("eng-GB" becomes "en-GB", "pt_BR" "pt-BR"), or nil
+    /// when tag names no language, as "und", "mul" or "English" do.
+    static func languageTag(_ tag: String) -> String? {
+        var parts = tag.replacingOccurrences(of: "_", with: "-").split(separator: "-").map(String.init)
+        guard let first = parts.first?.lowercased(), !["und", "mul", "mis", "zxx"].contains(first) else { return nil }
+        let code = Locale.LanguageCode(first)
+        guard code.isISOLanguage else { return nil }
+        parts[0] = code.identifier(.alpha2) ?? first
+        return parts.joined(separator: "-")
+    }
 
     /// Returns the voice for a book in language: the voice picked in
     /// Settings when it speaks that language, else the best installed voice
-    /// for it, from the user's region if there is one. Nil leaves the choice
-    /// to the system.
+    /// for it, from the region the language names, the user's region or the
+    /// language's usual one, in that order. Nil leaves the choice to the
+    /// system.
     static func voice(for language: String?, picked: String) -> AVSpeechSynthesisVoice? {
         let chosen = picked.isEmpty ? nil : AVSpeechSynthesisVoice(identifier: picked)
         guard let language else { return chosen }
         if let chosen, Self.language(of: chosen.language) == Self.language(of: language) { return chosen }
-        // The user's own region first, then the language's usual one: en-US
-        // for English, pt-BR for Portuguese.
+        // The usual region is en-US for English, pt-BR for Portuguese.
+        let named = Locale.Language(identifier: language).region?.identifier
         let user = Locale.current.region?.identifier
         let likely = Locale.Language(identifier: language).maximalIdentifier
         let usual = Locale.Language(identifier: likely).region?.identifier
         func score(_ voice: AVSpeechSynthesisVoice) -> (Int, Int) {
             let region = Locale(identifier: voice.language).region?.identifier
-            return (region == user ? 2 : region == usual ? 1 : 0, voice.quality.rawValue)
+            let rank = region == named ? 3 : region == user ? 2 : region == usual ? 1 : 0
+            return (rank, voice.quality.rawValue)
         }
         return voices(in: [language]).max { score($0) < score($1) } ?? AVSpeechSynthesisVoice(language: language)
     }

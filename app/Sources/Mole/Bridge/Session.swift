@@ -77,6 +77,15 @@ final class Session {
         return try CoreCall.decode(SessionState.self, mole_session_state(handle))
     }
 
+    /// Returns the language the book declares, normally a BCP 47 tag such as
+    /// "en" or "pt-BR", or nil when it declares none.
+    func language() throws -> String? {
+        try checkOpen()
+        struct Language: Decodable { let language: String }
+        let language = try CoreCall.decode(Language.self, mole_session_language(handle)).language
+        return language.isEmpty ? nil : language
+    }
+
     func chapters() throws -> [Chapter] {
         try checkOpen()
         return try CoreCall.decode([Chapter].self, mole_session_chapters(handle))
