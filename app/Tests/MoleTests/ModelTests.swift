@@ -114,3 +114,40 @@ final class WarmUpTests: XCTestCase {
         XCTAssertTrue(warmUp.sample(Headroom(current: 4, potential: 16), now: start.addingTimeInterval(0.2)))
     }
 }
+
+final class ReadingPaceTests: XCTestCase {
+    func testLearnsFromPlausibleScreens() {
+        var pace = ReadingPace()
+        pace.record(characters: 1000, seconds: 30)
+        XCTAssertEqual(pace.samples, 1)
+        XCTAssertEqual(pace.secondsPerCharacter, 0.03, accuracy: 1e-9)
+        pace.record(characters: 1000, seconds: 60)
+        XCTAssertEqual(pace.secondsPerCharacter, 0.03 + 0.15 * 0.03, accuracy: 1e-9)
+    }
+
+    func testIgnoresSkimsPausesAndShortScreens() {
+        var pace = ReadingPace()
+        pace.record(characters: 1000, seconds: 1)
+        pace.record(characters: 1000, seconds: 3600)
+        pace.record(characters: 50, seconds: 20)
+        XCTAssertEqual(pace.samples, 0)
+        XCTAssertEqual(pace.secondsPerCharacter, ReadingPace.defaultSecondsPerCharacter)
+    }
+
+    func testFormatsWholeMinutes() {
+        XCTAssertFalse(TimeLeft.format(10).isEmpty)
+        XCTAssertNotEqual(TimeLeft.format(12 * 60), TimeLeft.format(4 * 3600 + 30 * 60))
+    }
+}
+
+@MainActor
+final class WordTests: XCTestCase {
+    func testFindsTheWordAroundACharacter() {
+        // Offsets count non-whitespace characters: "Look" is 0..<4, "up," 4..<7.
+        let text = "Look up, then read on."
+        XCTAssertEqual(ReaderTab.word(in: text, atCharacter: 1), 0..<4)
+        XCTAssertEqual(ReaderTab.word(in: text, atCharacter: 5), 4..<6)
+        XCTAssertNil(ReaderTab.word(in: text, atCharacter: 6))
+        XCTAssertEqual(ReaderTab.word(in: "don\u{2019}t stop", atCharacter: 2), 0..<5)
+    }
+}

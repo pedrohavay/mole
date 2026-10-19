@@ -14,7 +14,7 @@ struct TabStrip: View {
                     Spacer().frame(width: Theme.Size.trafficLights)
                 }
                 IconButton(symbol: "sidebar.left", help: L10n.text("sidebar.show")) {
-                    withAnimation(.easeInOut(duration: 0.2)) { model.showSidebar = true }
+                    Motion.animate { model.showSidebar = true }
                 }
                 .padding(.horizontal, Theme.Space.xs)
             }
@@ -37,7 +37,7 @@ struct TabStrip: View {
             if model.activeTab != nil {
                 IconButton(symbol: "list.bullet.indent", help: L10n.text("contents.toggle.help"),
                            active: model.showContents) {
-                    withAnimation(.easeInOut(duration: 0.2)) { model.showContents.toggle() }
+                    Motion.animate { model.showContents.toggle() }
                 }
                 .padding(.trailing, Theme.Space.s)
             }
@@ -45,5 +45,7 @@ struct TabStrip: View {
         .frame(height: Theme.Size.bar)
         .background(Theme.surface)
         .hairline(.bottom)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L10n.text("tabs.label"))
     }
 }

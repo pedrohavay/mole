@@ -2,8 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
+	"time"
+
+	"mole/core/internal/importer"
+	"mole/core/internal/library"
 )
 
 func TestUTF16Len(t *testing.T) {
@@ -41,8 +46,30 @@ func TestJSONShapes(t *testing.T) {
 		},
 		{
 			name: "Book",
-			give: bookJSON{ID: 1, Path: "/lib/Books/a-1.epub", OriginalPath: "/dl/a.epub", Title: "A", Fraction: 0.5, OpenedAt: 3, AddedAt: 2},
-			want: `{"id":1,"path":"/lib/Books/a-1.epub","originalPath":"/dl/a.epub","title":"A","author":"","fraction":0.5,"openedAt":3,"addedAt":2}`,
+			give: toBookJSON(library.Book{ID: 1, Path: "/lib/Books/a-1.epub", OriginalPath: "/dl/a.epub", Title: "A",
+				Position: library.Position{Fraction: 0.5}, OpenedAt: time.Unix(3, 0), AddedAt: time.Unix(2, 0)}),
+			want: `{"id":1,"path":"/lib/Books/a-1.epub","originalPath":"/dl/a.epub","title":"A","author":"","fraction":0.5,"openedAt":3,"addedAt":2,"collections":[],"missing":false}`,
+		},
+		{
+			name: "BookInCollections",
+			give: toBookJSON(library.Book{ID: 2, Path: "/b", Title: "B", AddedAt: time.Unix(2, 0), Collections: []int64{4, 7}, Missing: true}),
+			want: `{"id":2,"path":"/b","originalPath":"","title":"B","author":"","fraction":0,"openedAt":0,"addedAt":2,"collections":[4,7],"missing":true}`,
+		},
+		{
+			name: "Collection",
+			give: collectionJSON{ID: 4, Name: "Essays", Folder: "/books/Essays"},
+			want: `{"id":4,"name":"Essays","folder":"/books/Essays"}`,
+		},
+		{
+			name: "Folder",
+			give: folderJSON{ID: 1, Path: "/books", Collections: true, AddedAt: 5, SyncedAt: 6},
+			want: `{"id":1,"path":"/books","collections":true,"addedAt":5,"syncedAt":6}`,
+		},
+		{
+			name: "FolderResult",
+			give: toFolderResultJSON(importer.FolderResult{Folder: 1, Found: 3, Added: []int64{9},
+				Failed: []importer.Failure{{Path: "/books/x.epub", Err: errors.New("not a zip")}}}),
+			want: `{"folder":1,"found":3,"added":[9],"updated":[],"missing":[],"failed":[{"path":"/books/x.epub","error":"not a zip"}]}`,
 		},
 		{
 			name: "Settings",
@@ -53,6 +80,11 @@ func TestJSONShapes(t *testing.T) {
 			name: "Picture",
 			give: pictureJSON{Page: 4, Index: 1, Rect: rectJSON{X: 1, Y: 2, Width: 3, Height: 4}},
 			want: `{"page":4,"index":1,"rect":{"x":1,"y":2,"width":3,"height":4}}`,
+		},
+		{
+			name: "Paragraph",
+			give: paragraphJSON{Range: r, Text: "Some text.", Continued: true},
+			want: `{"range":{"start":{"chapter":1,"offset":2},"end":{"chapter":1,"offset":9}},"text":"Some text.","continued":true}`,
 		},
 		{
 			name: "Rect",
@@ -77,5 +109,15 @@ func TestJSONShapes(t *testing.T) {
 				t.Errorf("JSON = %s, want %s", data, tt.want)
 			}
 		})
+	}
+}
+
+func TestFolderOptionsJSON(t *testing.T) {
+	var got folderOptionsJSON
+	if err := json.Unmarshal([]byte(`{"collections":true,"watch":true}`), &got); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	if want := (folderOptionsJSON{Collections: true, Watch: true}); got != want {
+		t.Errorf("folder options = %+v, want %+v", got, want)
 	}
 }

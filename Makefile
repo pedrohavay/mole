@@ -49,6 +49,22 @@ export CGO_CFLAGS CGO_LDFLAGS
 SIGN_IDENTITY ?=
 NOTARY_PROFILE ?=
 NOTARIZE ?= yes
+# Instead of NOTARY_PROFILE, an App Store Connect API key: the path of its
+# .p8 file, its key ID and its issuer ID. CI has no keychain profile.
+NOTARY_KEY ?=
+NOTARY_KEY_ID ?=
+NOTARY_ISSUER ?=
+
+# Updates (Sparkle). Releases publish appcast.xml next to the zip, and the
+# app reads the latest one. SPARKLE_PUBLIC_KEY turns the updater on; dev and
+# CI builds leave it empty, so their updater stays off. A release that sets
+# it signs the zip with SPARKLE_PRIVATE_KEY (the key itself) or
+# SPARKLE_KEY_FILE (a file holding it) and writes the appcast.
+REPOSITORY_URL ?= https://github.com/pedrohavay/mole
+SPARKLE_FEED_URL ?= $(REPOSITORY_URL)/releases/latest/download/appcast.xml
+SPARKLE_PUBLIC_KEY ?=
+SPARKLE_KEY_FILE ?=
+SPARKLE_BIN := $(CURDIR)/app/.build/artifacts/sparkle/Sparkle/bin
 
 .PHONY: all core app bundle run verify test test-core test-app lint notices release mupdf clean distclean help FORCE
 
@@ -60,7 +76,7 @@ help:
 	@echo "make verify       build, run the capture check (BOOK=path.epub adds a book)"
 	@echo "make test         run the Go and Swift tests (MOLE_TEST_EPUB=path.epub enables the book tests)"
 	@echo "make lint         gofmt and go vet"
-	@echo "make release      signed, notarized zip in $(RELEASE) (SIGN_IDENTITY, NOTARY_PROFILE)"
+	@echo "make release      signed, notarized zip in $(RELEASE) (SIGN_IDENTITY, NOTARY_PROFILE or NOTARY_KEY)"
 	@echo "make notices      regenerate THIRD_PARTY_NOTICES"
 	@echo "make mupdf        build the pinned MuPDF $(MUPDF_VERSION) into $(BUILD)/mupdf"
 	@echo "make clean        remove the build products, keeping the MuPDF build"
@@ -99,7 +115,8 @@ app: core
 	cd app && $(SWIFT) build $(SWIFT_FLAGS)
 
 bundle: app
-	scripts/bundle.sh "$$(cd app && $(SWIFT) build $(SWIFT_FLAGS) --show-bin-path)" $(APP) \
+	SPARKLE_FEED_URL="$(SPARKLE_FEED_URL)" SPARKLE_PUBLIC_KEY="$(SPARKLE_PUBLIC_KEY)" \
+		scripts/bundle.sh "$$(cd app && $(SWIFT) build $(SWIFT_FLAGS) --show-bin-path)" $(APP) \
 		$(VERSION) $(BUILD_NUMBER) $(BUNDLE_ID)
 
 run: bundle
@@ -122,14 +139,20 @@ lint: $(MUPDF_LIBS)
 	cd core && $(GO) vet ./...
 
 # THIRD_PARTY_NOTICES collects the licenses of everything linked into Mole:
-# MuPDF's components and fonts from its source, and the Go modules.
+# MuPDF's components and fonts from its source, Sparkle, and the Go modules.
 notices: $(MUPDF_PINNED)/lib/libmupdf.a
+	cd app && $(SWIFT) package resolve
 	GO=$(GO) scripts/notices.sh "$(MUPDF_SOURCE)" > THIRD_PARTY_NOTICES.tmp
 	mv THIRD_PARTY_NOTICES.tmp THIRD_PARTY_NOTICES
 
 # A release is always built against the pinned MuPDF, which targets the
 # oldest macOS Mole supports.
-RELEASE_ENV = SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARY_PROFILE="$(NOTARY_PROFILE)" NOTARIZE="$(NOTARIZE)"
+# SPARKLE_PRIVATE_KEY is a secret, so it stays in the environment instead
+# of on a command line that make would print.
+RELEASE_ENV = SIGN_IDENTITY="$(SIGN_IDENTITY)" NOTARIZE="$(NOTARIZE)" NOTARY_PROFILE="$(NOTARY_PROFILE)" \
+	NOTARY_KEY="$(NOTARY_KEY)" NOTARY_KEY_ID="$(NOTARY_KEY_ID)" NOTARY_ISSUER="$(NOTARY_ISSUER)" \
+	SPARKLE_PUBLIC_KEY="$(SPARKLE_PUBLIC_KEY)" SPARKLE_KEY_FILE="$(SPARKLE_KEY_FILE)" \
+	SPARKLE_BIN="$(SPARKLE_BIN)" REPOSITORY_URL="$(REPOSITORY_URL)"
 
 release:
 	@$(RELEASE_ENV) scripts/release.sh --check

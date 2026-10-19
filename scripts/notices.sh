@@ -1,13 +1,14 @@
 #!/bin/sh
 # notices.sh writes, to standard output, the notices of the third-party
 # software linked into Mole: MuPDF, the libraries and fonts it builds in,
-# the Go runtime and the Go modules. `make notices` runs it to regenerate
-# THIRD_PARTY_NOTICES; run that after changing MuPDF's version or the Go
-# dependencies.
+# Sparkle, the Go runtime and the Go modules. `make notices` runs it to
+# regenerate THIRD_PARTY_NOTICES; run that after changing MuPDF's version,
+# Sparkle's version or the Go dependencies.
 #
 # Usage: scripts/notices.sh MUPDF_SOURCE_DIR
 #
-# GO selects the Go toolchain, as in the Makefile.
+# GO selects the Go toolchain, as in the Makefile. Sparkle's license comes
+# from the package SwiftPM resolved into app/.build (swift package resolve).
 set -eu
 
 if [ $# -ne 1 ] || [ ! -f "$1/COPYING" ]; then
@@ -81,6 +82,15 @@ section "Fonts: Noto" "https://notofonts.github.io" "$F/noto/COPYING"
 section "Fonts: Charis SIL" "https://software.sil.org/charis" "$F/sil/OFL.txt"
 section "Fonts: Source Han Serif" "https://github.com/adobe-fonts/source-han-serif" "$F/han/LICENSE.txt"
 section "Fonts: Droid Sans Fallback" "https://android.googlesource.com/platform/frameworks/base" "$F/droid/NOTICE"
+
+# Sparkle's LICENSE also holds the licenses of the code it includes.
+SPARKLE="$ROOT/app/.build/artifacts/sparkle/Sparkle/LICENSE"
+if [ ! -f "$SPARKLE" ]; then
+	echo "notices.sh: no $SPARKLE; run swift package resolve in app first" >&2
+	exit 1
+fi
+SPARKLE_VERSION=$(awk '/"identity" *: *"sparkle"/ { on = 1 } on && /"version"/ { gsub(/[",]/, "", $3); print $3; exit }' "$ROOT/app/Package.resolved")
+section "Sparkle $SPARKLE_VERSION" "https://sparkle-project.org" "$SPARKLE"
 
 GOROOT=$(cd "$ROOT/core" && "$GO" env GOROOT)
 section "The Go runtime and standard library" "https://go.dev" "$GOROOT/LICENSE"

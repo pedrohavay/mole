@@ -1,28 +1,42 @@
 import AppKit
+import ApplicationServices
 import SwiftUI
 
 /// Verifier is a development aid, run with `--verify-dir dir`: it captures
 /// the library, checks that the title bar row takes clicks, opens the first
-/// book, turns some pages, captures the reader, the book's colors, its
-/// pictures in each mode, the picture viewer and the Settings window, and
-/// quits. It reports to standard error. Captures are 8-bit, so EDR values
-/// above SDR white come out clipped.
+/// book, turns some pages, walks the accessibility tree, reads the end of a
+/// screen aloud, captures the reader, the book's colors, its pictures in
+/// each mode, the picture viewer and the Settings window, and quits. With
+/// `--verify-folder tree` it checks folder imports and collections instead
+/// (see verifyFolders). It reports to standard error. Captures are 8-bit,
+/// so EDR values above SDR white come out clipped.
 @MainActor
 struct Verifier {
     let model: AppModel
     let directory: String
+    var folderTree: String?
 
     func start() {
         NSApp.activate(ignoringOtherApps: true)
+        if let folderTree {
+            return after(2.0) { verifyFolders(folderTree) }
+        }
         after(2.5) {
             model.selectedBook = model.books.first?.id
             after(0.4) {
                 capture("library.png")
                 reportChrome()
                 report("headroom with the library open: \(decimal(model.headroom.current, 2))x of \(decimal(model.headroom.potential, 0))x, active \(NSApp.isActive)")
-                guard let book = model.books.first else { return NSApp.terminate(nil) }
-                model.open(book)
-                after(2.0) { readBook() }
+                walkTree("ax-library.txt") { nodes in
+                    let title = model.books.first?.title ?? "-"
+                    for node in nodes where node.label.hasPrefix(title) || node.role == kAXScrollAreaRole
+                        || node.selected {
+                        report("a11y library: \(node.line.trimmingCharacters(in: .whitespaces))")
+                    }
+                    guard let book = model.books.first else { return NSApp.terminate(nil) }
+                    model.open(book)
+                    after(2.0) { readBook() }
+                }
             }
         }
     }
@@ -50,8 +64,151 @@ struct Verifier {
             if let tab = model.activeTab {
                 report("reading \(tab.state.page + 1)-\(tab.state.lastVisible + 1) of \(tab.state.pages), chapter \(tab.currentChapter?.title ?? "-"), gain \(decimal(model.gain, 2))")
             }
-            annotate()
+            // The window stops resizing first.
+            after(1.2) { checkAccessibility { checkReadAloud { annotate() } } }
         }
+    }
+
+    // MARK: Accessibility
+
+    /// Walks the app's accessibility tree through the AX API, as VoiceOver
+    /// does, from a background thread so that the main thread can answer.
+    /// It writes the tree to name in the directory, reports the controls
+    /// without a label, and hands the elements to next on the main thread.
+    private func walkTree(_ name: String, then next: @escaping @MainActor ([AXProbe.Node]) -> Void) {
+        guard AXIsProcessTrusted() else {
+            report("a11y: not trusted for the AX API, so \(name) was not written")
+            return next([])
+        }
+        let pid = getpid()
+        DispatchQueue.global().async {
+            let app = AXUIElementCreateApplication(pid)
+            // SwiftUI makes its elements as a client first asks for them.
+            _ = AXProbe.walk(app)
+            Thread.sleep(forTimeInterval: 0.5)
+            let nodes = AXProbe.walk(app)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    let path = (directory as NSString).appendingPathComponent(name)
+                    try? nodes.map(\.line).joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
+                    var roles: [String: Int] = [:]
+                    for node in nodes { roles[node.role, default: 0] += 1 }
+                    report("a11y: \(nodes.count) elements in \(path): \(roles.sorted { $0.value > $1.value }.prefix(8).map { "\($0.key) \($0.value)" }.joined(separator: ", "))")
+                    // Window buttons and scroll bar parts have a subrole
+                    // that VoiceOver reads instead of a label.
+                    let controls: Set<String> = [kAXButtonRole, kAXRadioButtonRole, kAXCheckBoxRole, kAXPopUpButtonRole,
+                                                 kAXMenuButtonRole, kAXSliderRole, kAXTextFieldRole, kAXImageRole]
+                    let unlabeled = nodes.filter {
+                        controls.contains($0.role) && $0.subrole.isEmpty && $0.label.isEmpty && $0.title.isEmpty
+                    }
+                    report("a11y: controls without a label: \(unlabeled.isEmpty ? "none" : unlabeled.map(\.line).joined(separator: "; "))")
+                    next(nodes)
+                }
+            }
+        }
+    }
+
+    /// Reports whether node is in the subtree of panel.
+    private func isUnder(_ node: AXProbe.Node, panel: AXProbe.Node, in nodes: [AXProbe.Node]) -> Bool {
+        var parent = node.parent
+        while let id = parent {
+            if id == panel.id { return true }
+            parent = nodes[id].parent
+        }
+        return false
+    }
+
+    /// Walks the tree with a book open, reports the page's paragraphs and
+    /// the reader's controls, then turns the page with the scroll action
+    /// through the AX API and back with the custom Previous Page action.
+    private func checkAccessibility(then next: @escaping @MainActor () -> Void) {
+        guard let tab = model.activeTab, let view = mainWindow?.contentView?.firstDescendant(of: EDRMetalView.self)
+        else { return next() }
+        walkTree("ax-reader.txt") { nodes in
+            let groups = nodes.filter { $0.role == kAXGroupRole && !$0.label.isEmpty }
+            report("a11y groups: \(groups.map { "\($0.label) (\($0.roleDescription))" }.joined(separator: "; "))")
+            for node in nodes where node.role == kAXButtonRole && node.subrole.isEmpty && node.depth <= 4 {
+                report("a11y control: \(node.line.trimmingCharacters(in: .whitespaces))")
+            }
+            guard let page = nodes.first(where: { $0.role == kAXGroupRole && $0.roleDescription == L10n.text("reader.role") })
+            else {
+                report("a11y: no page in the tree")
+                return next()
+            }
+            let paragraphs = nodes.filter { $0.parent == page.id }
+            report("a11y page: \(page.line.trimmingCharacters(in: .whitespaces))")
+            report("a11y page: \(paragraphs.count) paragraphs on \(tab.pageDescription)")
+            for (index, paragraph) in paragraphs.enumerated() where index < 3 || index == paragraphs.count - 1 {
+                report("a11y paragraph \(index + 1): \(paragraph.line.trimmingCharacters(in: .whitespaces))")
+            }
+            report("a11y page actions: \(page.actions.joined(separator: ", "))")
+            let before = tab.state.page
+            DispatchQueue.global().async {
+                let error = AXUIElementPerformAction(page.element, "AXScrollDownByPage" as CFString)
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        after(0.4) {
+                            report("a11y scroll down by page: \(error == .success ? "done" : "error \(error.rawValue)"), page \(before + 1) -> \(tab.state.page + 1), announced \"\(tab.pageDescription)\", \(view.textElements().count) paragraphs")
+                            let previous = view.accessibilityCustomActions()?.first { $0.name == L10n.text("reader.previousPage") }
+                            _ = previous?.handler?()
+                            after(0.4) {
+                                report("a11y custom action \(previous?.name ?? "-"): page \(tab.state.page + 1)")
+                                next()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Reading aloud
+
+    /// Reads aloud from the paragraph before last on the screen, silently and
+    /// fast, until the speech turns the page and goes on for two sentences;
+    /// then Esc stops it. It reports each sentence and captures the mark.
+    private func checkReadAloud(then next: @escaping @MainActor () -> Void) {
+        guard let tab = model.activeTab, let view = mainWindow?.contentView?.firstDescendant(of: EDRMetalView.self)
+        else { return next() }
+        let reader = model.readAloud
+        let paragraphs = tab.visibleParagraphs()
+        guard !paragraphs.isEmpty else { return next() }
+        let rate = reader.rate
+        reader.volume = 0
+        reader.rate = ReadAloud.rates.upperBound
+        let startPage = tab.state.page
+        let started = Date()
+        reader.start(tab, from: paragraphs[max(0, paragraphs.count - 2)].range.start)
+        report("read aloud: \(reader.state) from page \(startPage + 1), language \(tab.language ?? "-"), voice \(ReadAloud.voice(for: tab.language, picked: reader.voiceIdentifier)?.name ?? "system")")
+        var last: ReadAloud.Sentence?
+        var turnedAt: Int?
+        var sentences = 0
+        func poll() {
+            if let sentence = reader.sentence, sentence != last {
+                last = sentence
+                sentences += 1
+                report("read aloud: said \"\(ReaderTab.excerpt(sentence.text, limit: 70))\" on page \(tab.state.page + 1), marks \(tab.marks.filter { $0.kind == .speech }.count)")
+                if sentences == 1 { after(0.3) { capture("readaloud.png") } }
+            }
+            if turnedAt == nil, tab.state.page != startPage {
+                turnedAt = sentences
+                report("read aloud: turned to page \(tab.state.page + 1) after \(decimal(Date().timeIntervalSince(started), 1)) s")
+                after(0.2) { capture("readaloud-turned.png") }
+            }
+            let done = turnedAt.map { sentences >= $0 + 2 } ?? false
+            guard done || !reader.isActive || Date().timeIntervalSince(started) > 60 else { return after(0.1, poll) }
+            if let escape = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                             windowNumber: view.window?.windowNumber ?? 0, context: nil,
+                                             characters: "\u{1B}", charactersIgnoringModifiers: "\u{1B}",
+                                             isARepeat: false, keyCode: KeyCode.escape) {
+                view.keyDown(with: escape)
+            }
+            report("read aloud: \(sentences) sentences, page turned \(turnedAt != nil); after Esc \(reader.state), speech marks \(tab.marks.filter { $0.kind == .speech }.count)")
+            reader.rate = rate
+            reader.volume = 1
+            next()
+        }
+        poll()
     }
 
     /// Selects a passage, highlights it, bookmarks the page and searches the
@@ -79,9 +236,39 @@ struct Verifier {
             model.highlightSelection(color: 2)
             model.toggleBookmark()
             report("highlights \(tab.highlights.count), bookmarks \(tab.bookmarks.count), bookmarked \(tab.isBookmarked), marks \(tab.marks.count)")
-            model.showPanel(.search)
-            tab.find("pipeline")
-            waitForSearch(tab, started: Date())
+            lookUp(tab, in: view)
+        }
+    }
+
+    /// Selects a word by its position, opens the dictionary and the
+    /// translation for it, and reports the reading time left.
+    private func lookUp(_ tab: ReaderTab, in view: EDRMetalView) {
+        let size = view.bounds.size
+        let found = tab.selectWord(at: CGPoint(x: size.width * 0.45, y: size.height * 0.5))
+        report("word at the middle of the page: \(found ? tab.selectedText() ?? "" : "none")")
+        if let left = tab.timeLeft {
+            report("time left: chapter \(left.chapter.map { TimeLeft.format($0) } ?? "-"), book \(TimeLeft.format(left.book))")
+        }
+        let before = Set(NSApp.windows.map(ObjectIdentifier.init))
+        tab.lookUpSelection()
+        after(1.5) {
+            let shown = NSApp.windows.filter { $0.isVisible && !before.contains(ObjectIdentifier($0)) }
+            report("look up opened \(shown.map { String(describing: type(of: $0)) })")
+            if let panel = shown.first(where: { String(describing: type(of: $0)).contains("Popover") }) ?? shown.last {
+                capture("lookup.png", window: panel)
+            }
+            shown.forEach { $0.orderOut(nil) }
+            tab.translateSelection()
+            after(1.5) {
+                let translation = NSApp.windows.filter { $0.isVisible && !before.contains(ObjectIdentifier($0)) }
+                report("translation opened \(translation.map { String(describing: type(of: $0)) })")
+                if let window = translation.first { capture("translation.png", window: window) }
+                tab.translationText = nil
+                tab.clearSelection()
+                model.showPanel(.search)
+                tab.find("pipeline")
+                waitForSearch(tab, started: Date())
+            }
         }
     }
 
@@ -97,7 +284,13 @@ struct Verifier {
             model.showPanel(.notes)
             after(0.5) {
                 capture("notes.png")
-                pictures()
+                walkTree("ax-notes.txt") { nodes in
+                    let panel = nodes.first { $0.label == PanelPage.notes.title && $0.role == kAXGroupRole }
+                    for node in nodes where node.parent != nil && panel.map({ isUnder(node, panel: $0, in: nodes) }) == true {
+                        report("a11y notes: \(node.line.trimmingCharacters(in: .whitespaces))")
+                    }
+                    pictures()
+                }
             }
         }
     }
@@ -276,12 +469,20 @@ struct Verifier {
         SettingsTab.openWindow()
         after(1.0) {
             let settings = NSApp.windows.first { $0.isVisible && $0 !== main && $0.contentView != nil }
-            if let settings {
-                capture("settings.png", window: settings)
-            } else {
+            guard let settings else {
                 report("the Settings window did not open")
+                return NSApp.terminate(nil)
             }
-            NSApp.terminate(nil)
+            capture("settings.png", window: settings)
+            // The Reading tab holds the voice and speed of reading aloud.
+            let defaults = UserDefaults.standard
+            let shown = defaults.string(forKey: SettingsTab.storageKey)
+            defaults.set(SettingsTab.reading.rawValue, forKey: SettingsTab.storageKey)
+            after(0.8) {
+                capture("settings-reading.png", window: settings)
+                defaults.set(shown, forKey: SettingsTab.storageKey)
+                NSApp.terminate(nil)
+            }
         }
     }
 
@@ -330,20 +531,20 @@ struct Verifier {
         }
     }
 
-    private var mainWindow: NSWindow? {
+    var mainWindow: NSWindow? {
         NSApp.windows.first { $0.isVisible && $0.contentView != nil && $0.identifier?.rawValue.contains("main") == true }
             ?? NSApp.windows.first { $0.isVisible && $0.contentView != nil }
     }
 
-    private func after(_ seconds: Double, _ work: @escaping @MainActor () -> Void) {
+    func after(_ seconds: Double, _ work: @escaping @MainActor () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { MainActor.assumeIsolated(work) }
     }
 
-    private func report(_ message: String) {
+    func report(_ message: String) {
         FileHandle.standardError.write(Data("verify: \(message)\n".utf8))
     }
 
-    private func capture(_ name: String, window: NSWindow? = nil) {
+    func capture(_ name: String, window: NSWindow? = nil) {
         guard let window = window ?? mainWindow,
               let image = (WindowListCapture() as WindowCapture).image(of: CGWindowID(window.windowNumber)),
               let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
@@ -357,6 +558,86 @@ struct Verifier {
         } catch {
             report("cannot write \(path): \(error.localizedDescription)")
         }
+    }
+}
+
+/// AXProbe walks a process's accessibility tree through the AX API, as
+/// assistive apps see it. It must not run on the main thread of the process
+/// it walks.
+private enum AXProbe {
+    /// Node is an element of the tree and what VoiceOver would read of it.
+    struct Node: @unchecked Sendable {
+        let element: AXUIElement
+        let id: Int
+        let parent: Int?
+        let depth: Int
+        let role: String
+        let subrole: String
+        let roleDescription: String
+        /// Label is AXDescription, which NSAccessibility calls the label.
+        let label: String
+        let title: String
+        let value: String
+        let selected: Bool
+        let frame: CGRect
+        let actions: [String]
+
+        var line: String {
+            var parts = [String(repeating: "  ", count: depth) + role]
+            if !label.isEmpty { parts.append("label \"\(label)\"") }
+            if !title.isEmpty { parts.append("title \"\(title)\"") }
+            if !value.isEmpty { parts.append("value \"\(value.count > 60 ? value.prefix(60) + "…" : value)\"") }
+            if selected { parts.append("selected") }
+            parts.append("(\(roleDescription)) at \(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height))")
+            let extra = actions.filter { !["AXPress", "AXShowMenu", "AXScrollToVisible"].contains($0) }
+            if !extra.isEmpty { parts.append("actions \(extra.map { $0.replacingOccurrences(of: "\n", with: " ") })") }
+            return parts.joined(separator: " ")
+        }
+    }
+
+    /// Returns the elements under root, depth first, up to a limit.
+    static func walk(_ root: AXUIElement, limit: Int = 4000) -> [Node] {
+        var nodes: [Node] = []
+        var stack: [(element: AXUIElement, parent: Int?, depth: Int)] = [(root, nil, 0)]
+        while let (element, parent, depth) = stack.popLast(), nodes.count < limit {
+            let id = nodes.count
+            var actions: CFArray?
+            AXUIElementCopyActionNames(element, &actions)
+            nodes.append(Node(element: element, id: id, parent: parent, depth: depth,
+                              role: string(kAXRoleAttribute, of: element),
+                              subrole: string(kAXSubroleAttribute, of: element),
+                              roleDescription: string(kAXRoleDescriptionAttribute, of: element),
+                              label: string(kAXDescriptionAttribute, of: element),
+                              title: string(kAXTitleAttribute, of: element),
+                              value: string(kAXValueAttribute, of: element),
+                              selected: attribute(kAXSelectedAttribute, of: element) as? Bool ?? false,
+                              frame: frame(of: element), actions: actions as? [String] ?? []))
+            let children = attribute(kAXChildrenAttribute, of: element) as? [AXUIElement] ?? []
+            stack += children.reversed().map { ($0, id, depth + 1) }
+        }
+        return nodes
+    }
+
+    private static func attribute(_ name: String, of element: AXUIElement) -> AnyObject? {
+        var value: AnyObject?
+        return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
+    }
+
+    private static func string(_ name: String, of element: AXUIElement) -> String {
+        guard let value = attribute(name, of: element) else { return "" }
+        return value as? String ?? (value as? NSNumber)?.stringValue ?? ""
+    }
+
+    private static func frame(of element: AXUIElement) -> CGRect {
+        var origin = CGPoint.zero
+        var size = CGSize.zero
+        if let value = attribute(kAXPositionAttribute, of: element), CFGetTypeID(value) == AXValueGetTypeID() {
+            AXValueGetValue(value as! AXValue, .cgPoint, &origin)
+        }
+        if let value = attribute(kAXSizeAttribute, of: element), CFGetTypeID(value) == AXValueGetTypeID() {
+            AXValueGetValue(value as! AXValue, .cgSize, &size)
+        }
+        return CGRect(origin: origin, size: size)
     }
 }
 

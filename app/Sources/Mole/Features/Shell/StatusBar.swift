@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// StatusBar holds the light control, the chapter being read and where the
-/// reader is in the book. The EDR numbers live in the light popover, so the
-/// bar stays quiet.
+/// StatusBar holds the light control, the chapter being read, where the
+/// reader is in the book and the read aloud controls. The EDR numbers live in
+/// the light popover, so the bar stays quiet.
 @MainActor
 struct StatusBar: View {
     @Environment(AppModel.self) private var model
@@ -21,6 +21,20 @@ struct StatusBar: View {
                     .lineLimit(1)
                 Spacer()
                 StatusItem(text: pages(tab.state), meter: tab.state.progress, tint: Theme.secondary)
+                    // The chapter and the time left give way first.
+                    .fixedSize()
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityAddTraits(.isStaticText)
+                    .accessibilityLabel(spokenPages(tab.state))
+                if let left = tab.timeLeft {
+                    Text(left.chapter.map { L10n.format("time.left.chapter", TimeLeft.format($0)) }
+                        ?? L10n.format("time.left.book", TimeLeft.format(left.book)))
+                        .font(Theme.digits)
+                        .foregroundStyle(Theme.tertiary)
+                        .lineLimit(1)
+                        .help(L10n.format("time.left.book", TimeLeft.format(left.book)))
+                }
+                readAloudButtons
             } else {
                 Text(L10n.bookCount(model.books.count))
                     .font(Theme.digits)
@@ -35,6 +49,8 @@ struct StatusBar: View {
         .frame(height: Theme.Size.statusBar)
         .background(Theme.surface)
         .hairline(.top)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(L10n.text("status.label"))
     }
 
     /// LightButton shows the text brightness and opens the light popover.
@@ -57,10 +73,42 @@ struct StatusBar: View {
             .hoverable(selected: showLight, radius: Theme.Radius.s)
         }
         .buttonStyle(.plain)
+        .fixedSize()
         .help(L10n.text("light.title"))
         .accessibilityLabel(L10n.text("light.title"))
         .accessibilityValue(L10n.format("status.level", Int((model.settings.level * 100).rounded())))
         .popover(isPresented: $showLight, arrowEdge: .top) { LightPanel() }
+    }
+
+    /// ReadAloudButtons start, pause and resume reading the book aloud, and
+    /// stop it while it runs.
+    @ViewBuilder private var readAloudButtons: some View {
+        let readAloud = model.readAloud
+        HStack(spacing: Theme.Space.xxs) {
+            switch readAloud.state {
+            case .idle:
+                IconButton(symbol: "speaker.wave.2", help: L10n.text("readAloud.start.help"), size: 12) {
+                    model.toggleReadAloud()
+                }
+            case .speaking, .paused:
+                let speaking = readAloud.state == .speaking
+                IconButton(symbol: speaking ? "pause.fill" : "play.fill",
+                           help: speaking ? L10n.text("readAloud.pause") : L10n.text("readAloud.resume"),
+                           size: 11, active: true) {
+                    model.toggleReadAloud()
+                }
+                IconButton(symbol: "stop.fill", help: L10n.text("readAloud.stop"), size: 11) { readAloud.stop() }
+            }
+        }
+    }
+
+    /// Returns where the reader is in words, for VoiceOver.
+    private func spokenPages(_ state: SessionState) -> String {
+        guard state.pages > 0 else { return "" }
+        let pages = state.lastVisible > state.page
+            ? L10n.format("reader.pages", state.page + 1, state.lastVisible + 1, state.pages)
+            : L10n.format("reader.page", state.page + 1, state.pages)
+        return "\(pages), \(L10n.format("book.percentRead", Int(state.progress * 100)))"
     }
 
     private func pages(_ state: SessionState) -> String {

@@ -35,6 +35,14 @@ struct SelectionBar: View {
             IconButton(symbol: "magnifyingglass", help: L10n.text("search.selection"), size: 12) {
                 model.searchSelection()
             }
+            IconButton(symbol: "character.book.closed", help: L10n.text("lookup.action"), size: 12) {
+                tab.lookUpSelection()
+            }
+            if #available(macOS 14.4, *) {
+                IconButton(symbol: "translate", help: L10n.text("translate.action"), size: 12) {
+                    tab.translateSelection()
+                }
+            }
         }
         .padding(.horizontal, Theme.Space.s)
         .frame(height: 34)

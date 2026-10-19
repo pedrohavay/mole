@@ -74,6 +74,21 @@
 "import.progress" = "Adding %ld…";
 "import.failed.title" = "Some files were not added";
 "import.failed.detail" = "Could not read: %@.";
+"import.panel.message" = "Choose EPUB books, or folders of books.";
+"import.folder.progress" = "Adding books from folders…";
+"import.folder.title" = "Add the books in “%@”";
+"import.folders.title" = "Add the books in %ld folders";
+"import.folder.detail" = "Mole adds every EPUB in the folder and in its subfolders.";
+"import.folder.collections" = "Create collections from folders";
+"import.folder.collections.note" = "Each folder that holds books becomes a collection with its name.";
+"import.folder.sync" = "Keep this folder in sync";
+"import.folders.sync" = "Keep these folders in sync";
+"import.folder.sync.note" = "Mole adds books that appear here later and updates books that change. A book whose file leaves the folder is marked, never removed.";
+"import.folder.action" = "Add Books";
+"import.folder.none.title" = "No books found";
+"import.folder.none.detail" = "There are no EPUB files in the folders you chose.";
+"sync.failed" = "Some books in “%@” were not synced";
+"folder.remove.failed" = "Cannot stop syncing the folder";
 
 /* Library */
 "library.add" = "Add Books…";
@@ -91,6 +106,29 @@
 "missing.title" = "The file of “%@” is missing";
 "missing.detail" = "It was moved or deleted from %@.";
 "missing.remove" = "Remove from Library";
+
+/* Collections */
+"sidebar.collections" = "Collections";
+"sidebar.collections.empty" = "Click + to make a collection.";
+"collections.add.help" = "New collection (⌘N)";
+"collection.name" = "Name";
+"collection.defaultName" = "New Collection";
+"collection.defaultName.numbered" = "New Collection %ld";
+"collection.rename" = "Rename";
+"collection.delete" = "Delete Collection…";
+"collection.delete.title" = "Delete the collection “%@”?";
+"collection.delete.detail" = "The books in it stay in the library.";
+"collection.delete.action" = "Delete";
+"collection.exists" = "There is already a collection named “%@”";
+"collection.exists.detail" = "Choose another name.";
+"collection.failed" = "Cannot change the collection";
+"collection.folder.help" = "Made from %@";
+"collection.empty.title" = "This collection is empty";
+"collection.empty.message" = "Drag covers onto the collection in the sidebar, or use Add to Collection in a book’s menu.";
+"book.addToCollection" = "Add to Collection";
+"book.removeFromCollection" = "Remove from “%@”";
+"book.missing" = "Not in folder";
+"book.missing.help" = "The file left its synced folder. Mole still has its copy; remove the book if you no longer want it.";
 
 /* Shelves */
 "shelf.all" = "All Books";
@@ -175,6 +213,8 @@
 /* Search in a book */
 "search.prompt" = "Search this book";
 "search.selection" = "Search for Selection";
+"lookup.action" = "Look Up";
+"translate.action" = "Translate";
 "search.running" = "Searching… %ld found";
 "search.count.one" = "1 result";
 "search.count.other" = "%ld results";
@@ -185,6 +225,7 @@
 
 /* Menus */
 "menu.addBooks" = "Add Books…";
+"menu.newCollection" = "New Collection";
 "menu.closeBook" = "Close Book";
 "menu.go" = "Go";
 "menu.nextTab" = "Next Tab";
@@ -203,6 +244,7 @@
 "menu.find" = "Find in Book…";
 "menu.findNext" = "Find Next";
 "menu.findPrevious" = "Find Previous";
+"menu.checkForUpdates" = "Check for Updates…";
 
 /* Sidebar and tabs */
 "sidebar.show" = "Show Sidebar";
@@ -211,13 +253,39 @@
 "sidebar.open.empty" = "Open a book from the library.";
 "sidebar.recent" = "Recent";
 "sidebar.recent.help" = "Click to find it in the library, double-click to open it.";
+"sidebar.label" = "Sidebar";
+"sidebar.lastRead" = "last read %@";
 "tab.library" = "Library";
 "tab.close" = "Close";
+"tabs.label" = "Tabs";
 
 /* Status bar */
 "status.pages.single" = "%ld of %ld · %ld%%";
 "status.level" = "%ld%%";
 "status.pages.range" = "%ld–%ld of %ld · %ld%%";
+"time.left.chapter" = "%@ left in chapter";
+"time.left.book" = "%@ left in book";
+"status.label" = "Status bar";
+
+/* The page, as VoiceOver reads it */
+"reader.role" = "page";
+"reader.page" = "Page %ld of %ld";
+"reader.pages" = "Pages %ld and %ld of %ld";
+"reader.nextPage" = "Next Page";
+"reader.previousPage" = "Previous Page";
+
+/* Reading aloud */
+"readAloud.start" = "Read Aloud";
+"readAloud.start.help" = "Read aloud (⇧⌘R)";
+"readAloud.pause" = "Pause Reading Aloud";
+"readAloud.resume" = "Resume Reading Aloud";
+"readAloud.stop" = "Stop Reading Aloud";
+"readAloud.voice" = "Voice";
+"readAloud.voice.automatic" = "Automatic";
+"readAloud.voice.enhanced" = "%@ (Enhanced)";
+"readAloud.voice.premium" = "%@ (Premium)";
+"readAloud.rate" = "Speed";
+"readAloud.note" = "Automatic picks a voice that speaks the language of the book. To add voices, go to System Settings › Accessibility › Spoken Content › System Voice › Manage Voices.";
 
 /* Settings */
 "settings.general" = "General";
@@ -229,9 +297,22 @@
 "settings.accent.note" = "Used for selection, the active tab and controls. The page itself never takes the accent.";
 "settings.language" = "Language";
 "settings.language.note" = "Mole follows the language set in System Settings › General › Language & Region. English and Brazilian Portuguese are available.";
+"settings.updates" = "Updates";
+"settings.updates.automatic" = "Automatically check for updates";
+"settings.updates.note" = "Mole looks for a new version once a day and asks before installing it.";
+"settings.folders" = "Synced folders";
+"settings.folders.empty" = "No folders are kept in sync. Choose a folder in File › Add Books… and turn on Keep this folder in sync.";
+"settings.folders.note" = "Mole watches these folders and adds new or changed EPUB files. A book whose file leaves its folder is marked in the library and stays until you remove it.";
+"settings.folders.syncNow" = "Sync Now";
+"settings.folders.remove" = "Stop Syncing";
+"settings.folders.remove.help" = "Stop syncing this folder. Its books stay in the library.";
+"settings.folders.synced" = "synced %@";
+"settings.folders.notSynced" = "not synced yet";
+"settings.folders.collections" = "makes collections";
 "settings.text" = "Text";
 "settings.light" = "Light";
 "settings.light.note" = "Brightness is a share of what the screen can show above SDR white right now. Without EDR the text stops at SDR white.";
+"settings.readAloud" = "Reading aloud";
 "settings.shortcuts.reading" = "While reading";
 "settings.shortcuts.window" = "Window and tabs";
 
@@ -246,13 +327,17 @@
 "shortcut.contents" = "Show or hide the contents";
 "shortcut.fullScreen" = "Full screen";
 "shortcut.exitFullScreen" = "Leave full screen";
+"shortcut.lookUp" = "Look up the selection, or force click a word";
 "shortcut.picture" = "In a picture: zoom in, out, to fit, close";
 "shortcut.addBooks" = "Add books";
+"shortcut.newCollection" = "New collection";
 "shortcut.closeBook" = "Close the book";
 "shortcut.library" = "Library";
 "shortcut.tabs" = "Open books, in tab order";
 "shortcut.cycleTabs" = "Next or previous tab";
 "shortcut.sidebar" = "Show or hide the sidebar";
+"shortcut.readAloud" = "Read aloud, pause or resume";
+"shortcut.stopReadAloud" = "Stop reading aloud";
 "shortcut.settings" = "Settings";
 
 /* Key names */

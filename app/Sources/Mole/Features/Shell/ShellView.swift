@@ -21,6 +21,7 @@ struct ShellView: View {
         .background(WindowObserver { model.isFullScreen = $0 })
         .ignoresSafeArea()
         .focusedSceneValue(\.menuState, MenuState(model))
+        .sheet(item: Bindable(model).folderImport) { FolderImportSheet(request: $0) }
     }
 
     /// Lays out the columns for a window width. The contents panel steps
