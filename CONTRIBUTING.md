@@ -14,6 +14,9 @@ You need:
 - Go 1.26 or later.
 - librsvg (`brew install librsvg`), but only if you edit the icon in
   `assets/Mole.svg`.
+- Python 3, but only for `make release`, which installs dmgbuild to lay out
+  the disk image.
+- webp (`brew install webp`), but only for `make screenshots`.
 
 Then build and open the app:
 
@@ -31,6 +34,7 @@ then the SwiftUI app, and puts them together in `build/Mole.app`.
 | `make test` | Runs the Go and Swift tests. |
 | `make lint` | Runs `gofmt` and `go vet` on the core. |
 | `make verify` | Runs the app's self-check, which saves screenshots and a report in `build/verify`. |
+| `make screenshots` | Captures the README's screenshot from the books in `BOOKS`, in a library of its own. |
 | `make notices` | Rebuilds `THIRD_PARTY_NOTICES` after a dependency changes. |
 | `make clean` | Removes the build products but keeps the MuPDF build. |
 | `make distclean` | Removes everything, MuPDF included. |
@@ -55,6 +59,21 @@ Settings, and reads a page aloud. Set `BOOK` to an EPUB to add it first.
 > Set `MOLE_LIBRARY` to a scratch database, such as
 > `MOLE_LIBRARY=/tmp/mole-dev/library.db`, so test runs never touch your own
 > library in `~/Library/Application Support/Mole`.
+
+## Updating the screenshot
+
+The README shows the library with public domain books from
+[Standard Ebooks](https://standardebooks.org), whose covers are free to use.
+Download a few of their EPUBs, then run:
+
+```bash
+make screenshots BOOKS="$HOME/Downloads/standard-ebooks/*.epub"
+```
+
+Mole opens a library of its own in `build/screenshots`, reads Pride and
+Prejudice, Alice's Adventures in Wonderland and Frankenstein part of the way
+when they are among the books, captures the window and writes
+`assets/screenshots/library.webp`. Your own library is never touched.
 
 ## Things to know about the build
 

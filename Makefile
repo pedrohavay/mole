@@ -11,6 +11,9 @@ BUILD_NUMBER ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
 BUNDLE_ID ?= io.github.pedrohavay.mole
 # BOOK is an EPUB that `make verify` adds to the library before capturing.
 BOOK ?=
+# BOOKS are the books `make screenshots` shows. The README's screenshots use
+# public domain books from Standard Ebooks (see CONTRIBUTING.md).
+BOOKS ?=
 
 # SwiftPM needs the full Xcode toolchain (XCTest, the macOS SDK); an SDKROOT
 # left over from another toolchain would point it elsewhere.
@@ -73,7 +76,7 @@ PYTHON ?= python3
 DMGBUILD_ENV := $(BUILD)/dmgbuild
 DMGBUILD := $(CURDIR)/$(DMGBUILD_ENV)/bin/dmgbuild
 
-.PHONY: all core app bundle run verify test test-core test-app lint notices release mupdf clean distclean help FORCE
+.PHONY: all core app bundle run verify screenshots test test-core test-app lint notices release mupdf clean distclean help FORCE
 
 all: bundle
 
@@ -81,6 +84,7 @@ help:
 	@echo "make              build $(APP)"
 	@echo "make run          build and open the app"
 	@echo "make verify       build, run the capture check (BOOK=path.epub adds a book)"
+	@echo "make screenshots  build, capture the README screenshot (BOOKS=\"a.epub b.epub\")"
 	@echo "make test         run the Go and Swift tests (MOLE_TEST_EPUB=path.epub enables the book tests)"
 	@echo "make lint         gofmt and go vet"
 	@echo "make release      signed, notarized zip in $(RELEASE) (SIGN_IDENTITY, NOTARY_PROFILE or NOTARY_KEY)"
@@ -140,6 +144,15 @@ run: bundle
 verify: bundle
 	@mkdir -p $(BUILD)/verify
 	$(APP)/Contents/MacOS/Mole --verify-dir "$(abspath $(BUILD)/verify)" $(if $(BOOK),"$(BOOK)")
+
+# The screenshot gets a library of its own, so it never shows yours, and
+# cwebp (brew install webp) makes it small enough for the README.
+screenshots: bundle
+	@[ -n "$(BOOKS)" ] || { echo 'set BOOKS to the books to show, such as BOOKS="$$HOME/books/*.epub"' >&2; exit 1; }
+	rm -rf $(BUILD)/screenshots && mkdir -p $(BUILD)/screenshots assets/screenshots
+	MOLE_LIBRARY="$(abspath $(BUILD))/screenshots/library.db" \
+		$(APP)/Contents/MacOS/Mole --screenshots "$(abspath $(BUILD))/screenshots" $(BOOKS)
+	cwebp -quiet -q 90 -alpha_q 100 $(BUILD)/screenshots/library.png -o assets/screenshots/library.webp
 
 test: test-core test-app
 

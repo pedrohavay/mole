@@ -17,7 +17,8 @@ struct MoleApp: App {
         _launch = State(initialValue: launch)
         // The self-checks quit on their own and leave updates alone.
         let arguments = LaunchArguments.parse()
-        _updater = State(initialValue: Updater(start: !arguments.smokeTest && arguments.verifyDirectory == nil))
+        _updater = State(initialValue: Updater(start: !arguments.smokeTest && arguments.verifyDirectory == nil
+            && arguments.screenshotsDirectory == nil))
     }
 
     var body: some Scene {
@@ -85,6 +86,10 @@ final class Launch {
                 // NSApp does not exist yet while the App is initialized.
                 DispatchQueue.main.async {
                     Verifier(model: model, directory: directory, folderTree: arguments.verifyFolder).start()
+                }
+            } else if let directory = arguments.screenshotsDirectory {
+                DispatchQueue.main.async {
+                    Verifier(model: model, directory: directory).screenshots(expecting: arguments.books.count)
                 }
             }
         } catch {
