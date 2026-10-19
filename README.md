@@ -31,6 +31,10 @@ Mole is in early development and has no release builds yet.
 - EPUB layout and rendering by MuPDF, one or two pages side by side.
   Diagrams are inverted so their lines glow; photos and covers keep their
   tones, and pictures stay dim by default.
+- The book's own fonts or one of the Mac's: Iowan Old Style, Charter,
+  Georgia, Palatino, Baskerville, Avenir Next or Helvetica Neue. Code keeps
+  a monospaced font. Lines can be compact, normal or relaxed, margins
+  narrow, normal or wide, and paragraphs aligned left or justified.
 - A library with covers, shelves for books in progress, not started and
   finished, search by title or author, drag and drop, and tabs that reopen
   on the next launch.
@@ -38,7 +42,7 @@ Mole is in early development and has no release builds yet.
   notes, bookmarks, and a way to copy all of a book's highlights as
   Markdown.
 - Reading positions tied to the text, so the page you were on survives a
-  new font size or window size.
+  new font, font size, spacing, margin or window size.
 - A keyboard shortcut for every reading control, and arrow-key navigation in
   the library.
 - English and Brazilian Portuguese, picked from the system language.
@@ -72,8 +76,9 @@ a cover to open the book.
 Click the right side of the page, press →, or swipe left to turn the page;
 click the left third or press ← to go back. The sun button in the status bar
 sets the brightness, the EDR switch and the text color. The Aa button sets
-the text size, the stroke weight, one or two pages, and how pictures are
-shown.
+the text size, the font, the line spacing and alignment, the margins, the
+stroke weight, one or two pages, and how pictures are shown. Settings >
+Reading has the same options.
 
 Drag across the text to select it. The bar above the selection highlights it
 in a color, adds a note, copies it, or searches the book for it. The side
