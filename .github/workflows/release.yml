@@ -1,8 +1,8 @@
 # Release builds Mole from a version tag (v0.1.0), signs it with the
 # Developer ID certificate, notarizes it, and publishes it as a GitHub
 # release with its SHA-256 and the appcast that installed copies read to
-# update themselves. The tag must match VERSION in the Makefile. The README
-# (Making a release) lists the secrets and the variable it needs.
+# update themselves. The tag must match VERSION in the Makefile.
+# docs/RELEASING.md lists the secrets and the variable it needs.
 name: Release
 
 on:
@@ -48,7 +48,7 @@ jobs:
             [ -n "${!name}" ] || missing="$missing $name"
           done
           if [ -n "$missing" ]; then
-            echo "::error::not set:$missing (SPARKLE_PUBLIC_KEY is a repository variable, the others are secrets; see Making a release in the README)"
+            echo "::error::not set:$missing (SPARKLE_PUBLIC_KEY is a repository variable, the others are secrets; see docs/RELEASING.md)"
             exit 1
           fi
 

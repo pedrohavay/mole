@@ -43,7 +43,7 @@ CGO_LDFLAGS += -L$(MUPDF_PREFIX)/lib
 export CGO_CFLAGS CGO_LDFLAGS
 
 # Release signing. SIGN_IDENTITY is a "Developer ID Application" identity
-# and NOTARY_PROFILE a notarytool keychain profile (see the README).
+# and NOTARY_PROFILE a notarytool keychain profile (see docs/RELEASING.md).
 # SIGN_IDENTITY=- NOTARIZE=no makes an ad hoc, unnotarized release that
 # exercises every other step.
 SIGN_IDENTITY ?=
