@@ -34,6 +34,9 @@ Mole is in early development and has no release builds yet.
 - A library with covers, shelves for books in progress, not started and
   finished, search by title or author, drag and drop, and tabs that reopen
   on the next launch.
+- Collections, made by hand or from the folders books come in, and folders
+  kept in sync: new and changed books are added as they appear, and a book
+  whose file leaves the folder is marked rather than deleted.
 - Full-text search that runs in the background, highlights in five colors,
   notes, bookmarks, and a way to copy all of a book's highlights as
   Markdown.
@@ -72,8 +75,22 @@ notarized releases.
 
 Add books with File > Add Books (⌘O), by dropping EPUB files on the library,
 or with Open With > Mole in Finder. Mole copies each book into its library,
-so moving or deleting the original file does not break anything. Double-click
-a cover to open the book.
+so moving or deleting the original file does not break anything. A file
+added again after it changed, or after it was renamed, updates its book
+instead of adding a second one. Double-click a cover to open the book.
+
+Choose or drop a folder to add every EPUB in it and in its subfolders. Mole
+then asks whether each folder that holds books should become a collection,
+and whether to keep the folder in sync. A synced folder is watched while
+Mole runs and checked again at launch; Settings > General lists the synced
+folders, with Sync Now and a button to stop syncing one. When a file leaves
+a synced folder, its book stays in the library with a "Not in folder" mark
+until you remove it.
+
+Collections are listed in the sidebar under the shelves. Make one with the +
+button or File > New Collection (⌘N), double-click it to rename it, and drag
+covers onto it, or use Add to Collection in a book's menu. A book can be in
+several collections.
 
 Click the right side of the page, press →, or swipe left to turn the page;
 click the left third or press ← to go back. The sun button in the status bar
@@ -109,6 +126,7 @@ Anywhere in the window:
 | Keys | Action |
 |------|--------|
 | ⌘O | Add books |
+| ⌘N | New collection |
 | ⌘F, ⌘G, ⇧⌘G | Find in the book, next and previous result |
 | ⌘D | Bookmark the page |
 | ⇧⌘H | Highlight the selection |

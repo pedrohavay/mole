@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// SettingsView is the Settings window: appearance, updates, reading and the
-/// list of keyboard shortcuts.
+/// SettingsView is the Settings window: appearance, updates and synced
+/// folders, reading, and the list of keyboard shortcuts.
 @MainActor
 struct SettingsView: View {
     @AppStorage(SettingsTab.storageKey) private var selection = SettingsTab.general
@@ -78,9 +78,10 @@ private struct GeneralSettings: View {
                         .foregroundStyle(Theme.secondary)
                 }
             }
+            FoldersSection()
         }
         .formStyle(.grouped)
-        .frame(height: updater.isEnabled ? 370 : 260)
+        .frame(height: updater.isEnabled ? 580 : 470)
     }
 
     private func swatch(_ preset: Accent) -> some View {
@@ -183,6 +184,7 @@ struct Shortcut: Identifiable {
     /// The menu commands, which work anywhere in the window.
     static let window = [
         Shortcut(keys: "⌘O", action: "shortcut.addBooks"),
+        Shortcut(keys: "⌘N", action: "shortcut.newCollection"),
         Shortcut(keys: "⌘W", action: "shortcut.closeBook"),
         Shortcut(keys: "⌘1", action: "shortcut.library"),
         Shortcut(keys: "⌘2 … ⌘9", action: "shortcut.tabs"),

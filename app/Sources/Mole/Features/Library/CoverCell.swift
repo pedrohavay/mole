@@ -2,7 +2,8 @@ import SwiftUI
 
 /// CoverCell is one book of the grid: a click selects it, a double click
 /// opens it, and the options button or a secondary click shows its menu. The
-/// cover lifts while the pointer is over it.
+/// cover lifts while the pointer is over it, and can be dragged onto a
+/// collection in the sidebar.
 @MainActor
 struct CoverCell: View {
     @Environment(AppModel.self) private var model
@@ -25,10 +26,19 @@ struct CoverCell: View {
                     .foregroundStyle(Theme.text.opacity(hovering || selected ? 1 : 0.88))
                     .lineLimit(1)
                 HStack(spacing: Theme.Space.xs) {
-                    Text(caption)
-                        .font(Theme.font(11, book.lastOpened == nil ? .semibold : .regular))
-                        .foregroundStyle(book.lastOpened == nil ? accent : Theme.secondary)
-                        .lineLimit(1)
+                    if book.missing {
+                        Label(caption, systemImage: "exclamationmark.triangle.fill")
+                            .labelStyle(.titleAndIcon)
+                            .font(Theme.font(11, .medium))
+                            .foregroundStyle(Theme.caution)
+                            .lineLimit(1)
+                            .help(L10n.text("book.missing.help"))
+                    } else {
+                        Text(caption)
+                            .font(Theme.font(11, book.lastOpened == nil ? .semibold : .regular))
+                            .foregroundStyle(book.lastOpened == nil ? accent : Theme.secondary)
+                            .lineLimit(1)
+                    }
                     Spacer(minLength: 0)
                     options
                 }
@@ -44,6 +54,7 @@ struct CoverCell: View {
             model.selectedBook = book.id
             onSelect()
         })
+        .draggable(BookDrag(id: book.id)) { dragPreview }
         .contextMenu { menuItems }
         .popover(isPresented: $showInfo, arrowEdge: .trailing) { BookInfo(book: book) }
         .help(book.author.isEmpty ? book.title : "\(book.title) · \(book.author)")
@@ -73,6 +84,18 @@ struct CoverCell: View {
         .offset(y: hovering ? -2 : 0)
     }
 
+    private var dragPreview: some View {
+        Group {
+            if let image = model.covers[book.id] {
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
+            } else {
+                RoundedRectangle(cornerRadius: 3).fill(Theme.raised).aspectRatio(2.0 / 3.0, contentMode: .fit)
+            }
+        }
+        .frame(width: 64)
+        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+    }
+
     private var options: some View {
         Menu { menuItems } label: {
             Image(systemName: "ellipsis")
@@ -90,6 +113,7 @@ struct CoverCell: View {
     }
 
     private var caption: String {
+        if book.missing { return L10n.text("book.missing") }
         if book.lastOpened == nil { return L10n.text("book.new") }
         if book.isFinished { return L10n.text("book.finished") }
         return L10n.format("book.percentRead", Int(book.fraction * 100))
@@ -99,6 +123,25 @@ struct CoverCell: View {
         Button { model.open(book) } label: { Label(L10n.text("action.open"), systemImage: "book") }
         Button { showInfo = true } label: { Label(L10n.text("book.info"), systemImage: "info.circle") }
         Button { model.revealInFinder(book) } label: { Label(L10n.text("action.revealInFinder"), systemImage: "folder") }
+        Divider()
+        Menu {
+            ForEach(model.collections) { collection in
+                Toggle(collection.name, isOn: Binding {
+                    book.collections.contains(collection.id)
+                } set: { member in
+                    model.set(book, in: collection, member)
+                })
+            }
+            if !model.collections.isEmpty { Divider() }
+            Button(L10n.text("menu.newCollection")) { model.createCollection(with: [book.id]) }
+        } label: {
+            Label(L10n.text("book.addToCollection"), systemImage: "rectangle.stack.badge.plus")
+        }
+        if let collection = model.currentCollection, book.collections.contains(collection.id) {
+            Button { model.set(book, in: collection, false) } label: {
+                Label(L10n.format("book.removeFromCollection", collection.name), systemImage: "rectangle.stack.badge.minus")
+            }
+        }
         Divider()
         Button(role: .destructive) { model.remove(book) } label: {
             Label(L10n.text("library.remove"), systemImage: "trash")

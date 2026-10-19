@@ -3,15 +3,20 @@ import AppKit
 /// Verifier is a development aid, run with `--verify-dir dir`: it captures
 /// the library, checks that the title bar row takes clicks, opens the first
 /// book, turns some pages, captures the reader and the Settings window, and
-/// quits. It reports to standard error. Captures are 8-bit, so EDR values
-/// above SDR white come out clipped.
+/// quits. With `--verify-folder tree` it checks folder imports and
+/// collections instead (see verifyFolders). It reports to standard error.
+/// Captures are 8-bit, so EDR values above SDR white come out clipped.
 @MainActor
 struct Verifier {
     let model: AppModel
     let directory: String
+    var folderTree: String?
 
     func start() {
         NSApp.activate(ignoringOtherApps: true)
+        if let folderTree {
+            return after(2.0) { verifyFolders(folderTree) }
+        }
         after(2.5) {
             model.selectedBook = model.books.first?.id
             after(0.4) {
@@ -201,20 +206,20 @@ struct Verifier {
         }
     }
 
-    private var mainWindow: NSWindow? {
+    var mainWindow: NSWindow? {
         NSApp.windows.first { $0.isVisible && $0.contentView != nil && $0.identifier?.rawValue.contains("main") == true }
             ?? NSApp.windows.first { $0.isVisible && $0.contentView != nil }
     }
 
-    private func after(_ seconds: Double, _ work: @escaping @MainActor () -> Void) {
+    func after(_ seconds: Double, _ work: @escaping @MainActor () -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { MainActor.assumeIsolated(work) }
     }
 
-    private func report(_ message: String) {
+    func report(_ message: String) {
         FileHandle.standardError.write(Data("verify: \(message)\n".utf8))
     }
 
-    private func capture(_ name: String, window: NSWindow? = nil) {
+    func capture(_ name: String, window: NSWindow? = nil) {
         guard let window = window ?? mainWindow,
               let image = (WindowListCapture() as WindowCapture).image(of: CGWindowID(window.windowNumber)),
               let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
