@@ -116,9 +116,10 @@ func LineArt() image.Image {
 	return img
 }
 
-// Drawing is an SVG drawing of 200 x 100 units on a transparent
-// background: a black frame around a red disc.
-const Drawing = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">
+// Drawing is an SVG drawing on a transparent background: a black frame
+// around a red disc. Its own size is small (100 x 50 pixels), as drawings
+// meant to be scaled often are, so it is shown much larger than that.
+const Drawing = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50" viewBox="0 0 200 100">
 <rect x="10" y="10" width="180" height="80" fill="none" stroke="black" stroke-width="6"/>
 <circle cx="100" cy="50" r="20" fill="#CC0000"/>
 </svg>`

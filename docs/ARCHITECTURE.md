@@ -107,6 +107,11 @@ one of three styles that `mole_session_set_style` picks:
   page, so a transparent drawing does not vanish into the black.
 - Hidden draws no picture.
 
+MuPDF draws an image that scales, an SVG drawing, at its own size at 96 dpi
+and scales the pixels, which blurs it on a Retina screen. The core draws
+such an image itself at its size in pixels on the page and keeps that copy
+until the size changes, so a diagram in SVG is as sharp as the text.
+
 The shader converts both color layers from sRGB to linear Display P3 and
 draws pictures under the text at `min(gain, 1)`, so they follow the
 brightness level but never go past SDR white. MuPDF lets inline styles win

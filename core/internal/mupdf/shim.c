@@ -72,12 +72,15 @@ static void *budget_realloc(void *user, void *p, size_t size) {
 // resources, out of what a document may allocate.
 #define MD_STORE_SIZE ((size_t)64 << 20)
 
-// md_image_style remembers how an image of the document is shown at night:
-// line art inverted, everything else as it is.
+// md_image_style remembers how an image of the document is shown: at night
+// line art is inverted and everything else is drawn as it is, and an image
+// that scales (an SVG drawing) is drawn at its size on screen.
 typedef struct {
     fz_image *image; // kept
     int line_art;
-    fz_image *inverted; // kept, made the first time it is drawn
+    fz_image *sharp;    // kept: a scalable image drawn at w x h pixels
+    int w, h;           // the size sharp was drawn at
+    fz_image *inverted; // kept, made the first time it is drawn at night
 } md_image_style;
 
 #define MD_IMAGE_STYLES 16
@@ -173,6 +176,7 @@ md_doc *md_open(const char *path, const char *user_css, size_t limit, char *err,
 
 static void drop_style(fz_context *ctx, md_image_style *style) {
     fz_drop_image(ctx, style->image);
+    fz_drop_image(ctx, style->sharp);
     fz_drop_image(ctx, style->inverted);
     *style = (md_image_style){0};
 }
@@ -339,34 +343,88 @@ static fz_image *inverted_image(fz_context *ctx, fz_image *image) {
     return out;
 }
 
-// image_to_show returns the image to draw at night for image, remembering
-// the decision, and the inverted copy, for later renders.
-static fz_image *image_to_show(fz_context *ctx, md_doc *d, fz_image *image) {
-    md_image_style *style = NULL;
-    for (int i = 0; i < MD_IMAGE_STYLES && style == NULL; i++) {
+// image_style returns how image is shown, remembering it for later renders.
+static md_image_style *image_style(fz_context *ctx, md_doc *d, fz_image *image) {
+    for (int i = 0; i < MD_IMAGE_STYLES; i++) {
         if (d->styles[i].image == image) {
-            style = &d->styles[i];
+            return &d->styles[i];
         }
     }
-    if (style == NULL) {
-        style = &d->styles[d->next_style];
-        d->next_style = (d->next_style + 1) % MD_IMAGE_STYLES;
-        drop_style(ctx, style);
-        style->line_art = is_line_art(ctx, image);
-        style->image = fz_keep_image(ctx, image);
-    }
-    if (!style->line_art) {
+    md_image_style *style = &d->styles[d->next_style];
+    d->next_style = (d->next_style + 1) % MD_IMAGE_STYLES;
+    drop_style(ctx, style);
+    style->line_art = is_line_art(ctx, image);
+    style->image = fz_keep_image(ctx, image);
+    return style;
+}
+
+// MD_MAX_SHARP is the largest side, in pixels, that a scalable image is
+// drawn at on the page.
+#define MD_MAX_SHARP 2048
+
+// sized_image returns the image to draw where ctm puts image on a page drawn
+// at scale pixels per point: image itself, or for an image that scales, a
+// copy drawn at its size in pixels there, kept in style until that size
+// changes. MuPDF would draw a scalable image at its own size, at 96 dpi,
+// and scale the pixels, which blurs a drawing shown larger, as on a Retina
+// screen.
+static fz_image *sized_image(fz_context *ctx, md_image_style *style, fz_image *image, fz_matrix ctm, float scale) {
+    if (!image->scalable) {
         return image;
+    }
+    float fw = hypotf(ctm.a, ctm.b) * scale, fh = hypotf(ctm.c, ctm.d) * scale;
+    float longer = fw > fh ? fw : fh;
+    if (longer > MD_MAX_SHARP) {
+        fw *= MD_MAX_SHARP / longer;
+        fh *= MD_MAX_SHARP / longer;
+    }
+    int w = (int)(fw + 0.5f), h = (int)(fh + 0.5f);
+    if (w < 1 || h < 1) {
+        return image;
+    }
+    if (style->sharp != NULL && style->w == w && style->h == h) {
+        return style->sharp;
+    }
+    fz_drop_image(ctx, style->sharp);
+    fz_drop_image(ctx, style->inverted); // made from the old size
+    style->sharp = NULL;
+    style->inverted = NULL;
+    fz_pixmap *pix = NULL;
+    fz_var(pix);
+    fz_try(ctx) {
+        int l2factor = 0;
+        pix = image->get_pixmap(ctx, image, NULL, w, h, &l2factor);
+        style->sharp = fz_new_image_from_pixmap(ctx, pix, NULL);
+        style->w = w;
+        style->h = h;
+    }
+    fz_always(ctx) {
+        fz_drop_pixmap(ctx, pix);
+    }
+    fz_catch(ctx) {
+        fz_rethrow_if(ctx, FZ_ERROR_SYSTEM);
+        fz_report_error(ctx); // MuPDF's own drawing will do
+        return image;
+    }
+    return style->sharp;
+}
+
+// night_image returns the image to draw at night for shown, the image
+// sized_image gives for the image of style: shown itself, or its inverted
+// copy for line art, made once and kept in style.
+static fz_image *night_image(fz_context *ctx, md_image_style *style, fz_image *shown) {
+    if (!style->line_art) {
+        return shown;
     }
     if (style->inverted == NULL) {
         fz_try(ctx) {
-            style->inverted = inverted_image(ctx, image);
+            style->inverted = inverted_image(ctx, shown);
         }
         fz_catch(ctx) {
             fz_rethrow_if(ctx, FZ_ERROR_SYSTEM);
             fz_report_error(ctx);
             style->line_art = 0;
-            return image;
+            return shown;
         }
     }
     return style->inverted;
@@ -456,6 +514,7 @@ typedef struct {
     fz_device *text;
     fz_device *colors;
     fz_device *images;
+    float scale;     // pixels per point of the page
     int keep_colors; // send text and lines in a hue to colors
     int pictures;    // MD_PICTURES_*
     int masking;     // depth of mask definitions being drawn
@@ -604,15 +663,16 @@ static void split_fill_image(fz_context *ctx, fz_device *dev, fz_image *image, f
         fz_fill_image(ctx, s->images, image, ctm, alpha, cp);
         return;
     }
-    switch (s->pictures) {
-    case MD_PICTURES_HIDDEN:
+    if (s->pictures == MD_PICTURES_HIDDEN) {
         return;
-    case MD_PICTURES_ORIGINAL:
+    }
+    md_image_style *style = image_style(ctx, s->doc, image);
+    fz_image *shown = sized_image(ctx, style, image, ctm, s->scale);
+    if (s->pictures == MD_PICTURES_ORIGINAL) {
         fill_paper(ctx, s->images, ctm, alpha, cp);
-        fz_fill_image(ctx, s->images, image, ctm, alpha, cp);
-        break;
-    default:
-        fz_fill_image(ctx, s->images, image_to_show(ctx, s->doc, image), ctm, alpha, cp);
+        fz_fill_image(ctx, s->images, shown, ctm, alpha, cp);
+    } else {
+        fz_fill_image(ctx, s->images, night_image(ctx, style, shown), ctm, alpha, cp);
     }
     s->drawn++;
 }
@@ -775,6 +835,7 @@ int md_render_layers(md_doc *d, int page_number, float scale, const md_layers *l
         color_dev = layer_device(ctx, ctm, layers, layers->colors, &color_pix);
         image_dev = layer_device(ctx, ctm, layers, layers->images, &image_pix);
         split = new_split_device(ctx, d, text_dev, color_dev, image_dev);
+        SPLIT(split)->scale = scale;
         SPLIT(split)->keep_colors = layers->colors != NULL;
         SPLIT(split)->pictures = pictures;
         fz_run_page(ctx, page, split, fz_identity, NULL);

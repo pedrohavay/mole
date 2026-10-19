@@ -32,12 +32,19 @@ func pixels(rgba []byte, keep func(r, g, b, a int) bool) int {
 // openColors opens the color book of testbook laid out on one page.
 func openColors(t *testing.T) *Session {
 	t.Helper()
+	return openColorsAt(t, 1)
+}
+
+// openColorsAt opens the color book of testbook laid out on one page at
+// scale pixels per point.
+func openColorsAt(t *testing.T, scale float64) *Session {
+	t.Helper()
 	s, err := Open(testbook.Colors(t).Write(t), Location{Offset: -1})
 	if err != nil {
 		t.Fatalf("Open error: %v", err)
 	}
 	t.Cleanup(s.Close)
-	if err := s.Layout(NewGeometry(600, 700, 0, 1, 14, SpreadSingle), 14); err != nil {
+	if err := s.Layout(NewGeometry(600, 700, 0, scale, 14, SpreadSingle), 14); err != nil {
 		t.Fatalf("Layout error: %v", err)
 	}
 	return s
@@ -234,5 +241,35 @@ func TestDrawing(t *testing.T) {
 	}
 	if gray > 6 {
 		t.Errorf("drawing: %d gray pixels across the frame's edges, want sharp edges", gray)
+	}
+}
+
+// TestDrawingOnPage checks that an SVG drawing is drawn at the size it has
+// on screen, as on a Retina display, rather than scaled up from its own
+// small size: its frame has sharp edges in every style.
+func TestDrawingOnPage(t *testing.T) {
+	const scale = 2
+	s := openColorsAt(t, scale)
+	for _, style := range []Style{{Pictures: mupdf.PicturesNight}, {Pictures: mupdf.PicturesOriginal}} {
+		renderChapter(t, s, 3, style)
+		boxes, err := s.doc.PageImages(s.Page())
+		if err != nil || len(boxes) != 1 {
+			t.Fatalf("PageImages = %v, %v; want the drawing", boxes, err)
+		}
+		layer, _ := s.ImageLayer()
+		left, top := s.geo.pageOrigin(0)
+		b := boxes[0]
+		x0, x1 := int((left+b.X0)*scale), int((left+b.X0+(b.X1-b.X0)/4)*scale)
+		y := int((top + (b.Y0+b.Y1)/2) * scale)
+		gray := 0
+		for x := x0; x < x1; x++ {
+			p := layer[4*(y*s.Stride()+x):]
+			if v := (77*int(p[0]) + 150*int(p[1]) + 29*int(p[2])) >> 8; v > 30 && v < 225 {
+				gray++
+			}
+		}
+		if gray > 4 {
+			t.Errorf("drawing with pictures %d: %d gray pixels across the frame's edges, want sharp edges", style.Pictures, gray)
+		}
 	}
 }
