@@ -36,9 +36,12 @@ final class FolderWatcher {
     func watch(_ folders: [String]) {
         let folders = folders.sorted()
         guard folders != self.folders else { return }
-        stop()
+        stopStream()
         self.folders = folders
         real = Dictionary(folders.map { ($0, Self.realPath($0)) }, uniquingKeysWith: { first, _ in first })
+        // Changes still waiting out the quiet period stay, for the folders
+        // still watched.
+        changed.formIntersection(folders)
         guard !folders.isEmpty else { return }
         var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(self).toOpaque(),
                                            retain: nil, release: nil, copyDescription: nil)
@@ -57,13 +60,17 @@ final class FolderWatcher {
         self.stream = stream
     }
 
-    /// Stops watching every folder.
+    /// Stops watching every folder and drops the changes not reported yet.
     func stop() {
         pending?.cancel()
         pending = nil
         changed = []
         folders = []
         real = [:]
+        stopStream()
+    }
+
+    private func stopStream() {
         guard let stream else { return }
         FSEventStreamStop(stream)
         FSEventStreamInvalidate(stream)
@@ -91,7 +98,8 @@ final class FolderWatcher {
 
     /// Reports whether path is folder or lies inside it.
     nonisolated static func path(_ path: String, isIn folder: String) -> Bool {
-        path == folder || path.hasPrefix(folder.hasSuffix("/") ? folder : folder + "/")
+        guard !folder.isEmpty else { return false }
+        return path == folder || path.hasPrefix(folder.hasSuffix("/") ? folder : folder + "/")
     }
 
     /// Returns path with every symbolic link resolved, or path itself when

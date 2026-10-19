@@ -92,7 +92,7 @@ final class AppModel {
     /// Importer adds books off the main thread, on a library handle of its own.
     @ObservationIgnored lazy var importer = Importer(path: library.path)
     /// Watcher syncs the watched folders when files change in them.
-    @ObservationIgnored lazy var watcher = FolderWatcher(ignoring: (library.path as NSString).deletingLastPathComponent) {
+    @ObservationIgnored lazy var watcher = FolderWatcher(ignoring: URL(fileURLWithPath: library.path).deletingLastPathComponent().path) {
         [weak self] paths in self?.foldersChanged(paths)
     }
     /// Resync holds the folders that changed while they were being synced.
@@ -235,6 +235,8 @@ final class AppModel {
         Task {
             let result = await importer.add(paths)
             importing -= paths.count
+            // A file imported again may have changed, cover included.
+            forgetCovers(of: result.added)
             reload()
             if !result.failed.isEmpty {
                 alert(L10n.text("import.failed.title"),

@@ -73,6 +73,7 @@ final class FolderWatcherTests: XCTestCase {
         XCTAssertTrue(FolderWatcher.path("/books", isIn: "/books"))
         XCTAssertTrue(FolderWatcher.path("/books/x/a.epub", isIn: "/books/"))
         XCTAssertFalse(FolderWatcher.path("/books2/a.epub", isIn: "/books"))
+        XCTAssertFalse(FolderWatcher.path("/books/a.epub", isIn: ""))
     }
 
     func testRealPathKeepsPrivate() {

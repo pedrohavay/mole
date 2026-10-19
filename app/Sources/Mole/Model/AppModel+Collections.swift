@@ -40,16 +40,21 @@ extension AppModel {
     /// Makes a collection with a free name, holding books, shows it and
     /// starts editing its name.
     func createCollection(with books: [Int64] = []) {
+        let id: Int64
         do {
-            let id = try library.createCollection(named: freeCollectionName())
+            id = try library.createCollection(named: freeCollectionName())
+        } catch {
+            return alert(L10n.text("collection.failed"), error.localizedDescription)
+        }
+        collection = id
+        pane = .library
+        renamingCollection = id
+        do {
             for book in books { try library.add(book: book, to: id) }
-            reload()
-            collection = id
-            pane = .library
-            renamingCollection = id
         } catch {
             alert(L10n.text("collection.failed"), error.localizedDescription)
         }
+        reload()
     }
 
     /// Returns "New Collection", or "New Collection 2" and so on when that
@@ -199,14 +204,19 @@ extension AppModel {
         for folder in folders { sync(folder, quietly: quietly) }
     }
 
-    /// Stops watching folder. Its books stay in the library.
+    /// Stops watching folder. Its books stay in the library. It runs after
+    /// any sync of the folder, so a sync cannot mark books again once the
+    /// folder is gone.
     func remove(_ folder: WatchedFolder) {
-        do {
-            try library.remove(folder: folder.id)
-        } catch {
-            alert(L10n.text("folder.remove.failed"), error.localizedDescription)
+        Task {
+            do {
+                let id = folder.id
+                try await importer.run { try $0.remove(folder: id) }
+            } catch {
+                alert(L10n.text("folder.remove.failed"), error.localizedDescription)
+            }
+            reload()
         }
-        reload()
     }
 
     /// Syncs the watched folders at paths, which FolderWatcher saw change.
