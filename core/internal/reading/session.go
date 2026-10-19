@@ -1,7 +1,8 @@
 // Package reading lays out a book with MuPDF and draws the visible pages into
-// a coverage mask for an EDR renderer. It also locates text independently of
-// the layout (Anchor), for selection, highlights and search. It has no user
-// interface code.
+// a coverage mask, with layers for the hues of the text and for the
+// pictures, for an EDR renderer. It also locates text independently of the
+// layout (Anchor), for selection, highlights and search, and finds the
+// pictures on screen. It has no user interface code.
 package reading
 
 import (
@@ -28,24 +29,33 @@ type Chapter struct {
 	Page  int
 }
 
-// Session is an open book: its layout, the current page and the mask the
+// Style is how Render draws the pages.
+type Style struct {
+	Pictures   mupdf.Pictures
+	BookColors bool // keep the hues of colored text and lines
+}
+
+// Session is an open book: its layout, the current page and the layers the
 // visible pages are drawn into. It is not safe for concurrent use, except
 // that searches run on goroutines of their own.
 type Session struct {
-	path     string
-	style    Style
-	doc      *mupdf.Document
-	outline  []mupdf.OutlineItem
-	chapters []Chapter
-	start    Location // where to go on the first layout
-	geo      Geometry
-	fontSize float64
-	pages    int
-	page     int // first visible page, a multiple of the number of columns
-	mask     []byte
-	images   []byte // image layer of the last render, laid out like mask
-	drawn    bool   // whether the last render drew any image
-	stride   int
+	path       string
+	typography Typography
+	doc        *mupdf.Document
+	outline    []mupdf.OutlineItem
+	chapters   []Chapter
+	start      Location // where to go on the first layout
+	geo        Geometry
+	fontSize   float64
+	pages      int
+	page       int // first visible page, a multiple of the number of columns
+	style      Style
+	mask       []byte
+	colors     []byte      // hues of the text of the last render, 4 bytes per pixel of mask; nil without BookColors
+	images     []byte      // image layer of the last render, 4 bytes per pixel of mask; nil with PicturesHidden
+	drawn      mupdf.Drawn // which of colors and images the last render drew into
+	stride     int
+	pictures   map[int][]mupdf.Rect // where the pages measured in this layout draw images
 
 	// at is the anchor the reader is at. Only moving (Turn, GoTo and
 	// GoToAnchor) changes it, and every layout shows it, so going back and
@@ -64,10 +74,10 @@ type Session struct {
 	text   *bookText         // text for searching, extracted on first use
 }
 
-// Open opens the book at path in the zero Style; the first Layout shows the
-// page at start.
+// Open opens the book at path in the zero Typography; the first Layout
+// shows the page at start.
 func Open(path string, start Location) (*Session, error) {
-	doc, outline, err := openDocument(path, Style{})
+	doc, outline, err := openDocument(path, Typography{})
 	if err != nil {
 		return nil, err
 	}
@@ -88,10 +98,10 @@ func (s *Session) Close() {
 	s.doc.Close()
 }
 
-// openDocument opens the book at path with the user style sheet of style and
+// openDocument opens the book at path with the user style sheet of t and
 // reads its table of contents.
-func openDocument(path string, style Style) (*mupdf.Document, []mupdf.OutlineItem, error) {
-	doc, err := style.open(path)
+func openDocument(path string, t Typography) (*mupdf.Document, []mupdf.OutlineItem, error) {
+	doc, err := t.open(path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -103,28 +113,28 @@ func openDocument(path string, style Style) (*mupdf.Document, []mupdf.OutlineIte
 	return doc, outline, nil
 }
 
-// SetStyle sets the text in style. The book has no layout until the next
+// SetTypography sets the text in t. The book has no layout until the next
 // Layout, which lays it out again showing the same text, also when the
 // geometry and the font size stay the same.
-func (s *Session) SetStyle(style Style) error {
-	if style.css() == s.style.css() {
-		s.style = style
+func (s *Session) SetTypography(t Typography) error {
+	if t.css() == s.typography.css() {
+		s.typography = t
 		return nil
 	}
 	// MuPDF keeps the chapters it parsed with the old style sheet, so the
 	// book is opened again rather than given a new one.
-	doc, outline, err := openDocument(s.path, style)
+	doc, outline, err := openDocument(s.path, t)
 	if err != nil {
 		return err
 	}
 	s.doc.Close()
-	s.doc, s.outline, s.style = doc, outline, style
+	s.doc, s.outline, s.typography = doc, outline, t
 	s.pages = 0
 	return nil
 }
 
-// Style returns the style the text is set in.
-func (s *Session) Style() Style { return s.style }
+// Typography returns how the text is set.
+func (s *Session) Typography() Typography { return s.typography }
 
 // Layout reflows the book for geo and fontSize and shows the screen that
 // holds the reader's anchor, so that the same text stays in view. It does
@@ -153,12 +163,12 @@ func (s *Session) layout(geo Geometry, fontSize float64) error {
 	}
 	s.geo, s.fontSize, s.pages = geo, fontSize, pages
 	s.forgetText()
+	s.pictures = map[int][]mupdf.Rect{}
 	s.resolveChapters()
 	width, height := geo.PixelSize()
 	s.stride = (width + 63) &^ 63
 	s.mask = make([]byte, s.stride*height)
-	s.images = make([]byte, s.stride*height)
-	s.drawn = false
+	s.colors, s.images, s.drawn = nil, nil, mupdf.Drawn{}
 
 	if s.anchored {
 		if page, err := s.AnchorPage(s.at); err == nil {
@@ -290,16 +300,34 @@ func (s *Session) ChapterTitle() string {
 	return title
 }
 
+// SetStyle sets how the next Render draws the pages and reports whether it
+// changed.
+func (s *Session) SetStyle(style Style) (bool, error) {
+	if style.Pictures < mupdf.PicturesNight || style.Pictures > mupdf.PicturesHidden {
+		return false, fmt.Errorf("reading: unknown pictures %d", style.Pictures)
+	}
+	if style == s.style {
+		return false, nil
+	}
+	s.style = style
+	return true, nil
+}
+
+// Style returns how Render draws the pages.
+func (s *Session) Style() Style { return s.style }
+
 // Render draws the visible pages and returns the text mask with its row
 // stride in bytes: one byte of ink coverage per pixel of the view, for text
-// and vector paths. Images go to a second layer, ImageLayer.
+// and vector paths. The hues of colored text go to ColorLayer and images to
+// ImageLayer, as the style says.
 func (s *Session) Render() (mask []byte, stride int, err error) {
 	if s.pages == 0 {
 		return nil, 0, errors.New("reading: render before layout")
 	}
 	clear(s.mask)
-	clear(s.images)
-	s.drawn = false
+	s.colors = blankLayer(s.colors, 4*len(s.mask), s.style.BookColors, s.drawn.Colors)
+	s.images = blankLayer(s.images, 4*len(s.mask), s.style.Pictures != mupdf.PicturesHidden, s.drawn.Images)
+	s.drawn = mupdf.Drawn{}
 	g := s.geo
 	width, height := g.PixelSize()
 	y := int(math.Round(g.Top * g.Scale))
@@ -309,21 +337,54 @@ func (s *Session) Render() (mask []byte, stride int, err error) {
 			break
 		}
 		x := int(math.Round((g.Left + float64(column)*(g.ColumnWidth+g.Gap)) * g.Scale))
-		w := min(int(math.Ceil(g.ColumnWidth*g.Scale)), width-x)
-		h := min(int(math.Ceil(g.PageHeight*g.Scale)), height-y)
-		drawn, err := s.doc.RenderLayers(page, g.Scale, s.mask, s.images, y*s.stride+x, w, h, s.stride)
+		layers := mupdf.Layers{
+			Text: s.mask, Colors: s.colors, Images: s.images,
+			Offset: y*s.stride + x, Stride: s.stride,
+			Width:  min(int(math.Ceil(g.ColumnWidth*g.Scale)), width-x),
+			Height: min(int(math.Ceil(g.PageHeight*g.Scale)), height-y),
+		}
+		drawn, err := s.doc.RenderLayers(page, g.Scale, layers, s.style.Pictures)
 		if err != nil {
+			// A page may have drawn part of itself before failing.
+			s.drawn = mupdf.Drawn{Colors: true, Images: true}
 			return nil, 0, fmt.Errorf("render page %d: %w", page, err)
 		}
-		s.drawn = s.drawn || drawn
+		s.drawn.Colors = s.drawn.Colors || drawn.Colors
+		s.drawn.Images = s.drawn.Images || drawn.Images
 	}
 	return s.mask, s.stride, nil
 }
 
-// ImageLayer returns the images of the last Render, laid out like its mask:
-// one byte of luminance per pixel, on black. Photographs and dark pictures
-// are as they are; line art is inverted so that its lines are light. It
-// reports whether any image is on screen; the layer is all zero when not.
+// blankLayer returns an all-zero layer of size bytes when wanted, reusing
+// layer if it has that size (dirty says whether something was drawn into
+// it), and nil when not wanted.
+func blankLayer(layer []byte, size int, wanted, dirty bool) []byte {
+	switch {
+	case !wanted:
+		return nil
+	case len(layer) != size:
+		return make([]byte, size)
+	case dirty:
+		clear(layer)
+	}
+	return layer
+}
+
+// ColorLayer returns the hues of the text of the last Render, laid out like
+// its mask with four bytes per pixel: RGBA in sRGB with premultiplied
+// alpha, where alpha is the coverage of the text drawn in a hue. Black,
+// white and gray text is left out, for the reader's tint, and dark hues are
+// lightened to show on black. It reports whether any colored text is on
+// screen; the layer is nil or all zero when not.
+func (s *Session) ColorLayer() (layer []byte, drawn bool) {
+	return s.colors, s.drawn.Colors
+}
+
+// ImageLayer returns the images of the last Render, laid out like its mask
+// with four bytes per pixel: RGBA in sRGB with premultiplied alpha, which
+// makes the color channels the picture on black. The style says whether
+// line art is inverted. It reports whether any image is on screen; the
+// layer is nil or all zero when not.
 func (s *Session) ImageLayer() (layer []byte, drawn bool) {
-	return s.images, s.drawn
+	return s.images, s.drawn.Images
 }

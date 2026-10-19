@@ -347,7 +347,7 @@ func TestAnchorsInBook(t *testing.T) {
 	}
 
 	// Every chapter counts the same characters in any layout.
-	doc, err := mupdf.Open(path, Style{}.css())
+	doc, err := mupdf.Open(path, Typography{}.css())
 	if err != nil {
 		t.Fatalf("mupdf.Open error: %v", err)
 	}

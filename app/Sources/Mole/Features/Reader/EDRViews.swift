@@ -9,6 +9,8 @@ final class EDRMetalView: NSView, NSMenuItemValidation {
     var onKey: ((NSEvent) -> Bool)?
     /// OnMouse receives a press, each drag step and the release.
     var onMouse: ((MouseStep, CGPoint, NSEvent) -> Void)?
+    /// OnHover receives where the pointer moves while no button is down.
+    var onHover: ((CGPoint) -> Void)?
     var onScroll: ((NSEvent) -> Void)?
     /// OnMenu returns the context menu for a point, if any.
     var onMenu: ((CGPoint) -> NSMenu?)?
@@ -60,6 +62,18 @@ final class EDRMetalView: NSView, NSMenuItemValidation {
 
     override func keyDown(with event: NSEvent) {
         if onKey?(event) != true { super.keyDown(with: event) }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if trackingAreas.isEmpty {
+            addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
+                                           owner: self))
+        }
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        onHover?(point(of: event))
     }
 
     override func mouseDown(with event: NSEvent) {

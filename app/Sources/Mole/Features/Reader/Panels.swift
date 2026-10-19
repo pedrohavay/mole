@@ -42,10 +42,12 @@ struct LightPanel: View {
 }
 
 /// TextPanel holds the text controls: the size, the font, the paragraphs,
-/// the margins, the stroke weight, the page spread and the pictures.
+/// the margins, the stroke weight, the page spread, and how the book's
+/// pictures and colors show.
 @MainActor
 struct TextPanel: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accent) private var accent
 
     var body: some View {
         @Bindable var model = model
@@ -104,12 +106,16 @@ struct TextPanel: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            label("images.title")
-            Picker(L10n.text("images.title"), selection: $model.settings.images) {
-                ForEach(ImageLight.allCases) { Text($0.title).tag($0) }
+            label("pictures.title")
+            Picker(L10n.text("pictures.title"), selection: $model.settings.pictures) {
+                ForEach(PictureMode.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            Divider()
+            Toggle(L10n.text("text.bookColors"), isOn: $model.settings.bookColors)
+                .toggleStyle(.switch)
+                .tint(accent)
         }
         .padding(Theme.Space.l)
         .frame(width: 320)

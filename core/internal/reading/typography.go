@@ -7,10 +7,10 @@ import (
 	"mole/core/internal/mupdf"
 )
 
-// Style is how the reader sets a book's text over the book's own styles.
-// The zero value keeps the book's fonts, spaces lines normally and aligns
-// paragraphs to the left.
-type Style struct {
+// Typography is how the reader sets a book's text over the book's own
+// styles. The zero value keeps the book's fonts, spaces lines normally and
+// aligns paragraphs to the left.
+type Typography struct {
 	// Font is the family of one of Fonts, or "" for the book's own fonts,
 	// embedded ones included. Any other family keeps the book's fonts too.
 	Font        string
@@ -51,13 +51,13 @@ func (l LineSpacing) lineDistance() float64 {
 	return 0
 }
 
-// open opens the book at path with the style sheet of st.
-func (st Style) open(path string) (*mupdf.Document, error) {
-	doc, err := mupdf.Open(path, st.css())
+// open opens the book at path with the style sheet of t.
+func (t Typography) open(path string) (*mupdf.Document, error) {
+	doc, err := mupdf.Open(path, t.css())
 	if err != nil {
 		return nil, err
 	}
-	doc.SetLineDistance(st.LineSpacing.lineDistance())
+	doc.SetLineDistance(t.LineSpacing.lineDistance())
 	return doc, nil
 }
 
@@ -83,7 +83,7 @@ var offeredFonts = []offeredFont{
 }
 
 // Fonts returns the families of the installed fonts the reader offers for
-// Style.Font, in the order to show them.
+// Typography.Font, in the order to show them.
 func Fonts() []string {
 	var out []string
 	for _, f := range offeredFonts {
@@ -103,27 +103,24 @@ func offered(family string) (offeredFont, bool) {
 	return offeredFont{}, false
 }
 
-// css returns the user style sheet that sets the text in st. It keeps the
-// book's own styles and only overrides what the reader chose and what hurts
-// on an EDR page: colored text and lines, since dark red turns dim once
-// inverted to light. Code keeps a monospaced font whatever the font, so that
-// listings stay aligned. MuPDF does not hyphenate (it breaks words only at
-// the soft hyphens a book has), so justified text can space words widely.
-// Backgrounds are left out when rendering instead (see
-// mupdf.Document.RenderLayers): MuPDF lets inline styles win over these
-// rules.
-func (st Style) css() string {
+// css returns the user style sheet that sets the text in t. It keeps the
+// book's own styles and only overrides what the reader chose. Code keeps a
+// monospaced font whatever the font, so that listings stay aligned. MuPDF
+// does not hyphenate (it breaks words only at the soft hyphens a book has),
+// so justified text can space words widely. Colors and backgrounds are
+// handled when rendering instead (see mupdf.Document.RenderLayers): MuPDF
+// lets inline styles win over these rules.
+func (t Typography) css() string {
 	var b strings.Builder
-	b.WriteString("body, body * { color: black !important; }\n")
-	if f, ok := offered(st.Font); ok {
+	if f, ok := offered(t.Font); ok {
 		fmt.Fprintf(&b, "body, body * { font-family: \"%s\", %s !important; }\n", f.family, f.generic)
 	}
 	// Later than the font rule, so that code wins over it at equal specificity.
 	b.WriteString("pre, pre *, code, kbd, samp, tt { font-family: monospace !important; }\n")
 	align := "left"
-	if st.Justify {
+	if t.Justify {
 		align = "justify"
 	}
-	fmt.Fprintf(&b, "p, li { line-height: %.2f !important; text-align: %s !important; }\n", st.LineSpacing.height(), align)
+	fmt.Fprintf(&b, "p, li { line-height: %.2f !important; text-align: %s !important; }\n", t.LineSpacing.height(), align)
 	return b.String()
 }

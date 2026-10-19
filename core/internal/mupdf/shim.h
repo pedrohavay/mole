@@ -22,16 +22,54 @@ void md_close(md_doc *d);
 // base font size of em points. It returns the page count, or -1 on error.
 int md_layout(md_doc *d, float width, float height, float em, char *err, int errlen);
 
-// md_render_layers draws a page into two 8-bit buffers owned by the caller,
-// both width x height pixels with rows of stride bytes. text receives the
-// coverage of text, in full ink whatever its color, and of vector lines: 0
-// where the page is empty, 255 where ink fully covers the pixel; filled
-// boxes such as backgrounds are left out. images receives the luminance of images and
-// shadings on a black page, with line art inverted so that its lines are
-// light; *has_images is set to 1 when the page draws any. It returns 0 on
-// success.
-int md_render_layers(md_doc *d, int page, float scale, unsigned char *text, unsigned char *images,
-                     int width, int height, int stride, int *has_images, char *err, int errlen);
+// MD_PICTURES_* say how md_render_layers draws images.
+enum {
+    MD_PICTURES_NIGHT = 0,    // photographs as they are, line art with its lightness inverted
+    MD_PICTURES_ORIGINAL = 1, // every image as on a white page
+    MD_PICTURES_HIDDEN = 2,   // no image
+};
+
+// md_layers are the buffers md_render_layers draws a page into, owned by the
+// caller. All are width x height pixels with rows of stride pixels: text has
+// one byte per pixel, colors and images four, RGBA in device RGB (sRGB) with
+// premultiplied alpha. colors and images must be all zero (transparent) on
+// entry; either may be NULL to draw nothing into it.
+typedef struct {
+    unsigned char *text;
+    unsigned char *colors;
+    unsigned char *images;
+    int width, height, stride;
+} md_layers;
+
+// md_render_layers draws a page into layers. text receives the coverage of
+// text, in full ink whatever its color, and of vector lines: 0 where the
+// page is empty, 255 where ink fully covers the pixel; filled boxes such as
+// backgrounds are left out. colors receives the color of text and lines
+// drawn in a hue, lightened for a black page where it is dark; black, white
+// and gray are left out, for the reader's tint. images receives the images
+// and shadings on a black page as pictures (MD_PICTURES_*) says.
+// *has_colors and *has_images are set to 1 when the page draws into colors
+// or images. It returns 0 on success.
+int md_render_layers(md_doc *d, int page, float scale, const md_layers *layers, int pictures, int *has_colors,
+                     int *has_images, char *err, int errlen);
+
+// md_rect is a rectangle in page points, y down from the top of the page.
+typedef struct {
+    float x0, y0, x1, y1;
+} md_rect;
+
+// md_page_images reports where a page draws its images, in drawing order,
+// as boxes in *boxes (release it with md_free). Images inside masks and
+// patterns are left out. It returns the number of images, or -1 on error.
+int md_page_images(md_doc *d, int page, md_rect **boxes, char *err, int errlen);
+
+// md_image_pixels draws an image of a page, the index-th that
+// md_page_images reports, as it looks on white paper: at its own
+// resolution, or max_side pixels on its longer side for a scalable image,
+// and never more than max_side. It returns opaque RGBA pixels with rows of
+// 4 * *width bytes, which the caller releases with md_free, or NULL on error.
+unsigned char *md_image_pixels(md_doc *d, int page, int index, int max_side, int *width, int *height, char *err,
+                               int errlen);
 
 // md_render_png draws a page in color and returns it as PNG bytes that the
 // caller must release with md_free. It returns NULL on error.

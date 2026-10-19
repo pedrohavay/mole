@@ -243,8 +243,8 @@ MMMMMMMMMM</pre>`,
 		if err != nil {
 			t.Fatalf("Render error: %v", err)
 		}
-		images, drawn = s.ImageLayer()
-		return mask, images, drawn
+		layer, drawn := s.ImageLayer()
+		return mask, luma(layer), drawn
 	}
 	count := func(layer []byte, lo, hi byte) int {
 		n := 0

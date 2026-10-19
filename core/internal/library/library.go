@@ -87,15 +87,16 @@ type Position struct {
 
 // Settings are the reader settings shared by every book.
 type Settings struct {
-	Level    float64 // text brightness as a fraction of the EDR headroom
-	EDR      bool
-	Tint     int
-	Gamma    float64
-	FontSize float64
-	Spread   int    // pages side by side: 0 automatic, 1 single, 2 double
-	Accent   string // interface accent as "#RRGGBB"; empty means the default
-	Images   int    // how bright the image layer is: 0 dim, 1 off, 2 full
-	// The style of the text (see reading.Style and reading.Margins).
+	Level      float64 // text brightness as a fraction of the EDR headroom
+	EDR        bool
+	Tint       int
+	Gamma      float64
+	FontSize   float64
+	Spread     int    // pages side by side: 0 automatic, 1 single, 2 double
+	Accent     string // interface accent as "#RRGGBB"; empty means the default
+	Pictures   int    // how pages show images: 0 night, 1 original colors, 2 hidden
+	BookColors bool   // keep the hues of colored text
+	// The typography of the text (see reading.Typography and reading.Margins).
 	Font        string // family of an offered font, or "" for the book's own fonts
 	LineSpacing int    // 0 normal, 1 compact, 2 relaxed
 	Margins     int    // 0 normal, 1 narrow, 2 wide
@@ -205,6 +206,13 @@ var migrations = []string{
 		added_at    INTEGER NOT NULL,
 		synced_at   INTEGER NOT NULL DEFAULT 0
 	);`,
+	// Pictures replaces images, how bright pictures were before they had
+	// colors (0 dim, 1 off, 2 bright): hidden ones stay hidden and the
+	// others show at night, with line art inverted as before. The images
+	// column stays, unused, for older builds.
+	`ALTER TABLE reader_settings ADD COLUMN pictures INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE reader_settings ADD COLUMN book_colors INTEGER NOT NULL DEFAULT 0;
+	UPDATE reader_settings SET pictures = CASE images WHEN 1 THEN 2 ELSE 0 END;`,
 	`ALTER TABLE reader_settings ADD COLUMN font TEXT NOT NULL DEFAULT '';
 	ALTER TABLE reader_settings ADD COLUMN line_spacing INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE reader_settings ADD COLUMN margins INTEGER NOT NULL DEFAULT 0;
@@ -425,9 +433,10 @@ func (s *Store) SavePosition(id int64, p Position, openedAt time.Time) error {
 func (s *Store) Settings() (Settings, error) {
 	var st Settings
 	err := s.db.QueryRow(`
-		SELECT level, edr, tint, gamma, font_size, spread, accent, images, font, line_spacing, margins, justify
+		SELECT level, edr, tint, gamma, font_size, spread, accent, pictures, book_colors,
+			font, line_spacing, margins, justify
 		FROM reader_settings WHERE id = 1`).
-		Scan(&st.Level, &st.EDR, &st.Tint, &st.Gamma, &st.FontSize, &st.Spread, &st.Accent, &st.Images,
+		Scan(&st.Level, &st.EDR, &st.Tint, &st.Gamma, &st.FontSize, &st.Spread, &st.Accent, &st.Pictures, &st.BookColors,
 			&st.Font, &st.LineSpacing, &st.Margins, &st.Justify)
 	if errors.Is(err, sql.ErrNoRows) {
 		return DefaultSettings(), nil
@@ -441,14 +450,15 @@ func (s *Store) Settings() (Settings, error) {
 // SaveSettings replaces the reader settings.
 func (s *Store) SaveSettings(st Settings) error {
 	_, err := s.db.Exec(`
-		INSERT INTO reader_settings (id, level, edr, tint, gamma, font_size, spread, accent, images,
+		INSERT INTO reader_settings (id, level, edr, tint, gamma, font_size, spread, accent, pictures, book_colors,
 			font, line_spacing, margins, justify)
-		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (id) DO UPDATE SET level = excluded.level, edr = excluded.edr, tint = excluded.tint,
 			gamma = excluded.gamma, font_size = excluded.font_size, spread = excluded.spread,
-			accent = excluded.accent, images = excluded.images, font = excluded.font,
-			line_spacing = excluded.line_spacing, margins = excluded.margins, justify = excluded.justify`,
-		st.Level, st.EDR, st.Tint, st.Gamma, st.FontSize, st.Spread, st.Accent, st.Images,
+			accent = excluded.accent, pictures = excluded.pictures, book_colors = excluded.book_colors,
+			font = excluded.font, line_spacing = excluded.line_spacing, margins = excluded.margins,
+			justify = excluded.justify`,
+		st.Level, st.EDR, st.Tint, st.Gamma, st.FontSize, st.Spread, st.Accent, st.Pictures, st.BookColors,
 		st.Font, st.LineSpacing, st.Margins, st.Justify)
 	if err != nil {
 		return fmt.Errorf("save settings: %w", err)

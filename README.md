@@ -29,8 +29,13 @@ Mole is in early development and has no release builds yet.
 - Books open at their final brightness. A one-point EDR layer keeps the
   headroom raised while Mole is open, so the text does not fade in.
 - EPUB layout and rendering by MuPDF, one or two pages side by side.
-  Diagrams are inverted so their lines glow; photos and covers keep their
-  tones, and pictures stay dim by default.
+- Pictures in their own colors, never brighter than SDR white. At night
+  diagrams are inverted so their lines glow while photos keep their colors;
+  pictures can also show as printed, or not at all. Click one to see it full
+  size and zoom in.
+- The book's own text colors on request, so a red heading glows red and
+  highlighted code keeps its hues, while black and gray text takes the
+  reader's color.
 - The book's own fonts or one of the Mac's: Iowan Old Style, Charter,
   Georgia, Palatino, Baskerville, Avenir Next or Helvetica Neue. Code keeps
   a monospaced font. Lines can be compact, normal or relaxed, margins
@@ -106,8 +111,11 @@ Click the right side of the page, press →, or swipe left to turn the page;
 click the left third or press ← to go back. The sun button in the status bar
 sets the brightness, the EDR switch and the text color. The Aa button sets
 the text size, the font, the line spacing and alignment, the margins, the
-stroke weight, one or two pages, and how pictures are shown. Settings >
-Reading has the same options.
+stroke weight, one or two pages, how pictures are shown, and whether text
+keeps the book's colors. Settings > Reading has the same options.
+
+Click a picture to open it full size, in its colors. Pinch or press ⌘+ and
+⌘− to zoom, ⌘0 to fit it to the window, and Esc to close it.
 
 Drag across the text to select it. The bar above the selection highlights it
 in a color, adds a note, copies it, or searches the book for it. The side
@@ -137,7 +145,8 @@ While reading:
 | C | Next text color |
 | T or ⌥⌘C | Show or hide the side panel |
 | F or ⌃⌘F | Full screen |
-| Esc | Clear the selection, stop reading aloud, or leave full screen |
+| Esc | Close a picture, clear the selection, stop reading aloud, or leave full screen |
+| ⌘+, ⌘−, ⌘0 | Zoom an open picture in, out or to fit |
 | ⌃⌘D or force click | Look up the selection or the word in the dictionary |
 
 Anywhere in the window:
@@ -342,12 +351,14 @@ another appcast.
 
 Mole is two programs linked into one binary. The Go core owns the books and
 the data: it lays out EPUBs with MuPDF, renders the visible pages into a
-one-byte coverage mask and a separate image layer, and keeps the library,
-positions and annotations in SQLite. The SwiftUI app draws the window and
-hands the masks to a Metal shader, which writes `tint * gain * coverage^gamma`
-into an extended-range `rgba16Float` layer. The gain is the brightness level
-times the screen's current EDR headroom, so a fully covered pixel can go
-well past 1.0, the value of SDR white.
+one-byte coverage mask plus color layers for colored text and pictures, and
+keeps the library, positions and annotations in SQLite. The SwiftUI app
+draws the window and hands the layers to a Metal shader, which writes
+`tint * gain * coverage^gamma` into an extended-range `rgba16Float` layer.
+The gain is the brightness level times the screen's current EDR headroom, so
+a fully covered pixel can go well past 1.0, the value of SDR white. Colored
+text takes its own hue in place of the tint, and pictures go under the text
+at no more than 1.0.
 
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) covers the C API between the two
 halves, how the light is produced, and the findings behind those choices.

@@ -97,9 +97,9 @@ final class ReaderTab: Identifiable {
 
     /// Lays the book out for a view; see Session.layout.
     func layout(width: Double, height: Double, scale: Double, fontSize: Double, spread: Spread,
-                style: TextStyle) throws {
+                typography: Typography) throws {
         try session.layout(width: width, height: height, scale: scale, fontSize: fontSize, spread: spread,
-                           style: style)
+                           typography: typography)
         chapters = (try? session.chapters()) ?? []
         refresh()
     }
@@ -421,6 +421,11 @@ final class ReaderTab: Identifiable {
     func highlight(at point: CGPoint) -> Annotation? {
         guard let anchor = (try? session.anchor(at: point)) ?? nil else { return nil }
         return highlights.last { $0.range.contains(anchor) }
+    }
+
+    /// Returns the picture under a point of the view, if any.
+    func picture(at point: CGPoint) -> PagePicture? {
+        (try? session.picture(at: point)) ?? nil
     }
 
     /// Returns text shortened to about limit characters at a word boundary.

@@ -15,7 +15,10 @@ struct ReaderSettings: Codable, Equatable {
     var spread: Spread
     /// Accent is the interface accent as "#RRGGBB"; empty means the default.
     var accent: String
-    var images: ImageLight
+    var pictures: PictureMode
+    /// BookColors keeps the hues of colored text, such as headings and code;
+    /// black and gray text keeps the tint.
+    var bookColors: Bool
     /// Font is the family of one of ReaderFont.installed, or empty for the
     /// book's own fonts.
     var font: String
@@ -28,8 +31,8 @@ struct ReaderSettings: Codable, Equatable {
     static let levels = 0.02...1.0
 
     init(level: Double, edr: Bool, tint: Int, gamma: Double, fontSize: Double, spread: Spread, accent: String,
-         images: ImageLight = .dim, font: String = "", lineSpacing: LineSpacing = .normal,
-         margins: PageMargins = .normal, justify: Bool = false) {
+         pictures: PictureMode = .night, bookColors: Bool = false, font: String = "",
+         lineSpacing: LineSpacing = .normal, margins: PageMargins = .normal, justify: Bool = false) {
         self.level = level
         self.edr = edr
         self.tint = tint
@@ -37,16 +40,17 @@ struct ReaderSettings: Codable, Equatable {
         self.fontSize = fontSize
         self.spread = spread
         self.accent = accent
-        self.images = images
+        self.pictures = pictures
+        self.bookColors = bookColors
         self.font = font
         self.lineSpacing = lineSpacing
         self.margins = margins
         self.justify = justify
     }
 
-    // The images and the text style arrived after the first release of the
-    // core, so a library that predates them has no values and gets the
-    // defaults.
+    // Pictures, book colors and the typography arrived after the first
+    // release of the core, so a library that predates them has no values and
+    // gets the defaults.
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         level = try values.decode(Double.self, forKey: .level)
@@ -56,22 +60,23 @@ struct ReaderSettings: Codable, Equatable {
         fontSize = try values.decode(Double.self, forKey: .fontSize)
         spread = try values.decode(Spread.self, forKey: .spread)
         accent = try values.decode(String.self, forKey: .accent)
-        images = try values.decodeIfPresent(ImageLight.self, forKey: .images) ?? .dim
+        pictures = try values.decodeIfPresent(PictureMode.self, forKey: .pictures) ?? .night
+        bookColors = try values.decodeIfPresent(Bool.self, forKey: .bookColors) ?? false
         font = try values.decodeIfPresent(String.self, forKey: .font) ?? ""
         lineSpacing = try values.decodeIfPresent(LineSpacing.self, forKey: .lineSpacing) ?? .normal
         margins = try values.decodeIfPresent(PageMargins.self, forKey: .margins) ?? .normal
         justify = try values.decodeIfPresent(Bool.self, forKey: .justify) ?? false
     }
 
-    /// TextStyle is how the core sets the text in these settings.
-    var textStyle: TextStyle {
-        TextStyle(font: font, lineSpacing: lineSpacing, margins: margins, justify: justify)
+    /// Typography is how the core sets the text in these settings.
+    var typography: Typography {
+        Typography(font: font, lineSpacing: lineSpacing, margins: margins, justify: justify)
     }
 }
 
-/// TextStyle is how the core sets the text of a book over the book's own
+/// Typography is how the core sets the text of a book over the book's own
 /// styles, as Session.layout hands it over.
-struct TextStyle: Encodable, Equatable {
+struct Typography: Encodable, Equatable {
     var font: String
     var lineSpacing: LineSpacing
     var margins: PageMargins
@@ -115,26 +120,24 @@ extension ReaderFont {
     }
 }
 
-/// ImageLight is how bright pictures are on the page. Line art glows like
-/// the text; photographs keep their tones. Neither goes above SDR white.
-enum ImageLight: Int, Codable, CaseIterable, Identifiable {
-    /// Pictures at about a third of the text's light, capped at SDR white.
-    case dim
-    case off
-    /// Pictures as bright as the text, capped at SDR white.
-    case full
+/// PictureMode is how the page shows pictures. The raw values are the
+/// core's; the cases are in the order the controls show them.
+enum PictureMode: Int, Codable, CaseIterable, Identifiable {
+    /// Every picture in its colors, as on a white page.
+    case original = 1
+    /// Photographs in their colors and line art inverted, so that a diagram
+    /// glows like the text instead of lighting a sheet of white paper.
+    case night = 0
+    case hidden = 2
 
     var id: Int { rawValue }
 
-    var title: String { L10n.text("images.\(String(describing: self))") }
+    var title: String { L10n.text("pictures.\(String(describing: self))") }
 
-    /// Returns the light of the image layer for a text gain.
+    /// Returns the light of pictures for a text gain: they follow the text
+    /// level but never go above SDR white.
     func gain(for textGain: Double) -> Double {
-        switch self {
-        case .dim: min(textGain, 1) * 0.35
-        case .off: 0
-        case .full: min(textGain, 1)
-        }
+        self == .hidden ? 0 : min(textGain, 1)
     }
 }
 

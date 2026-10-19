@@ -5,11 +5,12 @@ import SwiftUI
 /// Verifier is a development aid, run with `--verify-dir dir`: it captures
 /// the library, checks that the title bar row takes clicks, opens the first
 /// book, turns some pages, walks the accessibility tree, reads the end of a
-/// screen aloud, captures the reader in several fonts, margins and spacings,
-/// the Text popover and the Settings window, and quits. With
+/// screen aloud, captures the reader, the book's colors, its pictures in
+/// each mode, the picture viewer, the reader in several fonts, margins and
+/// spacings, the Text popover and the Settings window, and quits. With
 /// `--verify-folder tree` it checks folder imports and collections instead
-/// (see verifyFolders). It reports to standard error. Captures are 8-bit, so
-/// EDR values above SDR white come out clipped.
+/// (see verifyFolders). It reports to standard error. Captures are 8-bit,
+/// so EDR values above SDR white come out clipped.
 @MainActor
 struct Verifier {
     let model: AppModel
@@ -289,7 +290,7 @@ struct Verifier {
                     for node in nodes where node.parent != nil && panel.map({ isUnder(node, panel: $0, in: nodes) }) == true {
                         report("a11y notes: \(node.line.trimmingCharacters(in: .whitespaces))")
                     }
-                    typography()
+                    pictures()
                 }
             }
         }
@@ -303,10 +304,10 @@ struct Verifier {
 
     /// Shows a search hit well into the book and highlights a passage near
     /// the top of its screen, then sets the text in other fonts, margins and
-    /// spacings,
-    /// capturing each look of the page. For each it reports whether the
-    /// reader stayed at the same text and whether the highlight and the hit
-    /// still lie over their text. The settings are put back afterwards.
+    /// spacings, capturing each look of the page. For each it reports
+    /// whether the reader stayed at the same text and whether the highlight,
+    /// the hit, VoiceOver's paragraphs and the sentences read aloud still lie
+    /// over their text. The settings are put back afterwards.
     private func typography() {
         guard let tab = model.activeTab, let window = mainWindow,
               let view = window.contentView?.firstDescendant(of: EDRMetalView.self) else { return finish() }
@@ -350,6 +351,56 @@ struct Verifier {
         }
     }
 
+    /// Captures the first screen with colored text, with and without the
+    /// book's colors, then screens with pictures, the last one in every
+    /// picture mode, and opens a picture in the viewer.
+    private func pictures() {
+        guard let tab = model.activeTab else { return finish() }
+        model.showContents = false
+        model.settings.bookColors = true
+        tab.go(to: 0)
+        var screens = 0
+        while (try? tab.session.setStyle(pictures: .hidden, bookColors: true)) != nil,
+              (try? tab.session.render()) != nil, (try? tab.session.textColors()) == nil, screens < 300 {
+            tab.turn(1)
+            screens += 1
+        }
+        report("colored text on page \(tab.state.page + 1)")
+        after(0.8) {
+            capture("colors.png")
+            colorsInTypography(tab) {
+                model.settings.bookColors = false
+                after(0.6) {
+                    capture("colors-off.png")
+                    seekPicture(tab, from: 0, name: "pictures.png") {
+                        seekPicture(tab, from: 40, name: "pictures-2.png") {
+                            seekPicture(tab, from: 150, name: "pictures-3.png") { pictureModes(tab) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Sets the screen with colored text in Georgia, relaxed and justified,
+    /// captures it and reports whether the text keeps its colors, then puts
+    /// the typography back.
+    private func colorsInTypography(_ tab: ReaderTab, then next: @escaping @MainActor () -> Void) {
+        let typography = model.settings.typography
+        model.settings.font = "Georgia"
+        model.settings.lineSpacing = .relaxed
+        model.settings.justify = true
+        after(1.5) {
+            capture("colors-typography.png")
+            let colored = (try? tab.session.textColors()) != nil
+            report("colored text in Georgia, relaxed and justified: \(colored ? "keeps its colors" : "LOST its colors") on page \(tab.state.page + 1)")
+            model.settings.font = typography.font
+            model.settings.lineSpacing = typography.lineSpacing
+            model.settings.justify = typography.justify
+            after(1.2) { next() }
+        }
+    }
+
     private func showLooks(_ looks: ArraySlice<Look>, tab: ReaderTab, start: Anchor, highlight: Annotation?,
                            then done: @escaping @MainActor () -> Void) {
         guard let look = looks.first else { return done() }
@@ -372,19 +423,14 @@ struct Verifier {
     }
 
     /// Reports whether the paragraphs VoiceOver reads and the sentences read
-    /// aloud lie over their text: each line box of a paragraph, and of each
-    /// of the first sentences on screen, must hit test inside it. It also
+    /// aloud lie over their text: no line box of a paragraph, or of the
+    /// first sentences on screen, may hit test outside it (see lies). It also
     /// counts paragraphs and lines, since a paragraph a line would mean the
     /// lines of a paragraph came apart.
     private func readingFrames(in tab: ReaderTab) -> String {
         let paragraphs = tab.visibleParagraphs()
         let lines = paragraphs.reduce(0) { $0 + $1.lines.count }
-        let framed = paragraphs.filter { paragraph in
-            paragraph.lines.allSatisfy { box in
-                guard let anchor = (try? tab.session.anchor(at: CGPoint(x: box.midX, y: box.midY))) ?? nil else { return false }
-                return paragraph.range.contains(anchor)
-            }
-        }
+        let framed = paragraphs.filter { lies($0.lines, over: $0.range, in: tab) }
         let parts = tab.visibleRange.flatMap { try? tab.session.paragraphs(of: $0) } ?? []
         let sentences = ReadAloud.sentences(in: parts).prefix(6)
         let marked = sentences.filter { linesUp($0.range, in: tab).hasPrefix("lines up") }
@@ -394,20 +440,24 @@ struct Verifier {
             + "\(sentences.count) sentences read aloud \(sentenceState)"
     }
 
-    /// Reports whether a range on screen is drawn over its text: a hit test
-    /// at the middle of each of its boxes must land inside the range.
+    /// Reports whether a range on screen is drawn over its text; see lies.
     private func linesUp(_ range: TextRange?, in tab: ReaderTab) -> String {
         guard let range else { return "missing" }
         guard let rects = try? tab.session.rects(of: range), !rects.isEmpty else { return "off screen" }
-        let inside = rects.filter { rect in
-            guard let anchor = (try? tab.session.anchor(at: CGPoint(x: rect.midX, y: rect.midY))) ?? nil else { return false }
-            return range.contains(anchor)
-        }
-        return inside.count == rects.count ? "lines up (\(rects.count) boxes)" : "MISALIGNED (\(inside.count) of \(rects.count) boxes)"
+        return lies(rects, over: range, in: tab) ? "lines up (\(rects.count) boxes)" : "MISALIGNED (\(rects.count) boxes)"
+    }
+
+    /// Reports whether boxes lie over the text of range: a hit test at the
+    /// middle of each box lands inside range, or on no text at all, as over
+    /// a blank line of a code listing, and at least one lands inside.
+    private func lies(_ boxes: [CGRect], over range: TextRange, in tab: ReaderTab) -> Bool {
+        let anchors = boxes.compactMap { box in (try? tab.session.anchor(at: CGPoint(x: box.midX, y: box.midY))) ?? nil }
+        return !anchors.isEmpty && anchors.allSatisfy { range.contains($0) }
     }
 
     /// Shows the Text popover over the bottom right of the page, as the
-    /// status bar button does, and captures it.
+    /// status bar button does, and captures it with the typography of the
+    /// last look.
     private func showTextPanel(over view: NSView, then done: @escaping @MainActor () -> Void) {
         let popover = NSPopover()
         popover.contentViewController = NSHostingController(rootView: TextPanel()
@@ -419,12 +469,140 @@ struct Verifier {
         popover.show(relativeTo: corner, of: view, preferredEdge: view.isFlipped ? .maxY : .minY)
         after(0.8) {
             if let window = popover.contentViewController?.view.window {
-                capture("text-panel.png", window: window)
+                capture("text-panel-typography.png", window: window)
             } else {
                 report("the Text popover did not open")
             }
             popover.close()
             done()
+        }
+    }
+
+    /// Shows the first screen from page from that has a picture, captures
+    /// it into name and goes on with next.
+    private func seekPicture(_ tab: ReaderTab, from page: Int, name: String, next: @escaping @MainActor () -> Void) {
+        tab.go(to: page)
+        var screens = 0
+        while (try? tab.session.render()) != nil, (try? tab.session.imageLayer()) == nil, screens < 300 {
+            tab.turn(1)
+            screens += 1
+        }
+        report("picture on page \(tab.state.page + 1) for \(name)")
+        after(0.8) {
+            capture(name)
+            next()
+        }
+    }
+
+    private func pictureModes(_ tab: ReaderTab) {
+        model.settings.pictures = .original
+        after(0.6) {
+            capture("pictures-original.png")
+            model.settings.bookColors = true
+            after(0.6) {
+                capture("pictures-original-colors.png")
+                model.settings.bookColors = false
+                model.settings.pictures = .hidden
+                after(0.6) {
+                    capture("pictures-hidden.png")
+                    model.settings.pictures = .night
+                    after(0.6) { viewPicture(tab) }
+                }
+            }
+        }
+    }
+
+    /// Clicks the picture on screen, zooms it with ⌘= and closes it with Esc,
+    /// reporting each step and capturing the viewer.
+    private func viewPicture(_ tab: ReaderTab) {
+        guard let window = mainWindow, let view = window.contentView?.firstDescendant(of: EDRMetalView.self) else {
+            return finish()
+        }
+        let size = view.bounds.size
+        var points: [CGPoint] = []
+        for x in 1..<16 {
+            for y in 1..<16 { points.append(CGPoint(x: size.width * CGFloat(x) / 16, y: size.height * CGFloat(y) / 16)) }
+        }
+        guard let point = points.first(where: { tab.picture(at: $0) != nil }), let picture = tab.picture(at: point) else {
+            report("no picture to click on page \(tab.state.page + 1)")
+            return finish()
+        }
+        report("picture at \(Int(point.x)),\(Int(point.y)): page \(picture.page + 1), index \(picture.index), \(Int(picture.rect.width))x\(Int(picture.rect.height)) pt")
+        // The keys below need the window to be key, which another app may
+        // have taken since launch.
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        view.onHover?(point)
+        report("cursor over the picture: \(NSCursor.current === NSCursor.pointingHand ? "pointing hand" : "other")")
+        click(at: point, in: view)
+        after(1.0) {
+            guard let viewer = window.contentView?.firstDescendant(of: PictureScrollView.self),
+                  let image = (viewer.documentView as? NSImageView)?.image else {
+                report("the picture viewer did not open")
+                return finish()
+            }
+            let fontSize = model.settings.fontSize
+            report("viewer open: \(Int(image.size.width))x\(Int(image.size.height)) px at \(decimal(viewer.magnification, 2))x, first responder \(window.firstResponder.map { String(describing: type(of: $0)) } ?? "none"), key \(window.isKeyWindow)")
+            capture("viewer.png")
+            press("=", keyCode: 24, modifiers: .command, in: window)
+            press("=", keyCode: 24, modifiers: .command, in: window)
+            after(0.6) {
+                report("after ⌘= twice: \(decimal(viewer.magnification, 2))x, text size \(Int(model.settings.fontSize)) (was \(Int(fontSize)))")
+                capture("viewer-zoom.png")
+                press("0", keyCode: 29, modifiers: .command, in: window)
+                after(0.6) {
+                    report("after ⌘0: \(decimal(viewer.magnification, 2))x")
+                    press("\u{1b}", keyCode: KeyCode.escape, modifiers: [], in: window)
+                    after(0.6) {
+                        let open = window.contentView?.firstDescendant(of: PictureScrollView.self) != nil
+                        report("after Esc: viewer open \(open), page has the keys \(window.firstResponder === view)")
+                        capture("text-panel.png", view: TextPanel()) {
+                            capture("reading-settings.png", view: ReadingSettings().frame(width: 520)) { typography() }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Captures view into name, in a window of its own with the app's
+    /// environment, then goes on with next.
+    private func capture<Content: View>(_ name: String, view: Content, next: @escaping @MainActor () -> Void) {
+        let host = NSHostingView(rootView: view.environment(model).environment(\.accent, model.accent)
+            .preferredColorScheme(.dark))
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.titled],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.center()
+        window.orderFront(nil)
+        after(0.6) {
+            capture(name, window: window)
+            window.close()
+            next()
+        }
+    }
+
+    /// Clicks point of the page, in view points from the top left, as the
+    /// page's own mouse handling sees it.
+    private func click(at point: CGPoint, in view: EDRMetalView) {
+        guard let window = view.window else { return }
+        let location = view.convert(NSPoint(x: point.x, y: view.bounds.height - point.y), to: nil)
+        for (type, step) in [(NSEvent.EventType.leftMouseDown, EDRMetalView.MouseStep.down), (.leftMouseUp, .up)] {
+            if let event = NSEvent.mouseEvent(with: type, location: location, modifierFlags: [], timestamp: 0,
+                                              windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                                              clickCount: 1, pressure: 1) {
+                view.onMouse?(step, point, event)
+            }
+        }
+    }
+
+    /// Presses a key in window through the app, menus included.
+    private func press(_ key: String, keyCode: UInt16, modifiers: NSEvent.ModifierFlags, in window: NSWindow) {
+        if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
+                                        windowNumber: window.windowNumber, context: nil, characters: key,
+                                        charactersIgnoringModifiers: key, isARepeat: false, keyCode: keyCode) {
+            NSApp.sendEvent(event)
         }
     }
 

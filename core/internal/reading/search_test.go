@@ -121,7 +121,7 @@ func TestSearch(t *testing.T) {
 	}
 
 	// A match may cross a line break of the search layout.
-	doc, err := mupdf.Open(path, Style{}.css())
+	doc, err := mupdf.Open(path, Typography{}.css())
 	if err != nil {
 		t.Fatalf("mupdf.Open error: %v", err)
 	}

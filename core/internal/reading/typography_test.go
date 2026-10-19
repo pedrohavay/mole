@@ -10,32 +10,32 @@ import (
 	"mole/core/internal/testbook"
 )
 
-func TestStyleCSS(t *testing.T) {
+func TestTypographyCSS(t *testing.T) {
 	tests := []struct {
 		name     string
-		give     Style
+		give     Typography
 		want     []string // in this order
 		wantNone string
 	}{
 		{
 			name:     "Zero",
-			give:     Style{},
-			want:     []string{"color: black !important", "monospace !important", "line-height: 1.45 !important; text-align: left !important"},
+			give:     Typography{},
+			want:     []string{"monospace !important", "line-height: 1.45 !important; text-align: left !important"},
 			wantNone: "font-family: \"",
 		},
 		{
 			name: "SerifFont",
-			give: Style{Font: "Georgia", LineSpacing: LineSpacingRelaxed},
+			give: Typography{Font: "Georgia", LineSpacing: LineSpacingRelaxed},
 			want: []string{`body, body * { font-family: "Georgia", serif !important; }`, "pre, pre *", "line-height: 1.70"},
 		},
 		{
 			name: "SansFontJustified",
-			give: Style{Font: "Helvetica Neue", LineSpacing: LineSpacingCompact, Justify: true},
+			give: Typography{Font: "Helvetica Neue", LineSpacing: LineSpacingCompact, Justify: true},
 			want: []string{`font-family: "Helvetica Neue", sans-serif !important`, "line-height: 1.25 !important; text-align: justify !important"},
 		},
 		{
 			name:     "FontNotOffered",
-			give:     Style{Font: `Comic Sans", serif; } body { color: red`},
+			give:     Typography{Font: `Comic Sans", serif; } body { color: red`},
 			wantNone: "Comic",
 		},
 	}
@@ -76,16 +76,16 @@ func TestFonts(t *testing.T) {
 	}
 }
 
-// TestSetStyle sets a book in other styles and checks that each one takes
+// TestSetTypography sets a book in other typographies and checks that each one takes
 // effect while the reader stays at the same text.
-func TestSetStyle(t *testing.T) {
+func TestSetTypography(t *testing.T) {
 	chapters := append(bookChapters(2, 120), "<pre>iiiiiiiiii\nMMMMMMMMMM</pre>")
 	s, err := Open(testbook.Chapters(t, chapters...), Location{Offset: -1})
 	if err != nil {
 		t.Fatalf("Open error: %v", err)
 	}
 	t.Cleanup(s.Close)
-	if err := s.SetStyle(Style{}); err != nil {
+	if err := s.SetTypography(Typography{}); err != nil {
 		t.Fatalf("SetStyle before a layout error: %v", err)
 	}
 	geo := NewGeometry(600, 700, 0, 1, 14, SpreadSingle, MarginsNormal)
@@ -104,7 +104,7 @@ func TestSetStyle(t *testing.T) {
 	}
 
 	pagesBy := map[LineSpacing]int{}
-	for _, style := range []Style{
+	for _, style := range []Typography{
 		{Font: "Georgia"},
 		{Font: "Avenir Next", LineSpacing: LineSpacingRelaxed, Justify: true},
 		{Font: "Palatino", LineSpacing: LineSpacingCompact},
@@ -112,14 +112,14 @@ func TestSetStyle(t *testing.T) {
 		{LineSpacing: LineSpacingCompact},
 		{},
 	} {
-		if err := s.SetStyle(style); err != nil {
-			t.Fatalf("SetStyle(%+v) error: %v", style, err)
+		if err := s.SetTypography(style); err != nil {
+			t.Fatalf("SetTypography(%+v) error: %v", style, err)
 		}
 		if err := s.Layout(geo, 14); err != nil {
 			t.Fatalf("Layout in %+v error: %v", style, err)
 		}
-		if s.Style() != style {
-			t.Errorf("Style() = %+v after SetStyle(%+v)", s.Style(), style)
+		if s.Typography() != style {
+			t.Errorf("Typography() = %+v after SetTypography(%+v)", s.Typography(), style)
 		}
 		if style.Font == "" {
 			pagesBy[style.LineSpacing] = s.Pages()
@@ -163,14 +163,14 @@ func TestJustify(t *testing.T) {
 		p.WriteString(words[(i*7)%len(words)] + " ")
 	}
 	path := testbook.Chapters(t, "<p>"+p.String()+"</p>")
-	full := func(style Style) float64 {
+	full := func(style Typography) float64 {
 		t.Helper()
 		s, err := Open(path, Location{Offset: -1})
 		if err != nil {
 			t.Fatalf("Open error: %v", err)
 		}
 		defer s.Close()
-		if err := s.SetStyle(style); err != nil {
+		if err := s.SetTypography(style); err != nil {
 			t.Fatalf("SetStyle error: %v", err)
 		}
 		if err := s.Layout(NewGeometry(600, 700, 0, 1, 14, SpreadSingle, MarginsNormal), 14); err != nil {
@@ -193,17 +193,17 @@ func TestJustify(t *testing.T) {
 		}
 		return float64(n) / float64(len(lines))
 	}
-	left, justified := full(Style{}), full(Style{Justify: true})
+	left, justified := full(Typography{}), full(Typography{Justify: true})
 	if justified < 0.9 || left > 0.5 {
 		t.Errorf("lines reaching the right edge: %.0f%% justified, %.0f%% aligned left; want nearly all and few", justified*100, left*100)
 	}
 }
 
-// TestStylesInBook sets a real book in every offered font and in other
+// TestTypographyInBook sets a real book in every offered font and in other
 // spacings and margins, and checks that the reader stays at the same text
 // and that a search hit and its highlight still fall on it. Set
 // MOLE_TEST_EPUB to an EPUB path.
-func TestStylesInBook(t *testing.T) {
+func TestTypographyInBook(t *testing.T) {
 	path := os.Getenv("MOLE_TEST_EPUB")
 	if path == "" {
 		t.Skip("MOLE_TEST_EPUB not set")
@@ -244,21 +244,21 @@ func TestStylesInBook(t *testing.T) {
 	}
 
 	type setting struct {
-		style   Style
+		style   Typography
 		margins Margins
 	}
 	var settings []setting
 	for _, f := range Fonts() {
-		settings = append(settings, setting{style: Style{Font: f}})
+		settings = append(settings, setting{style: Typography{Font: f}})
 	}
 	settings = append(settings,
-		setting{style: Style{Font: "Charter", LineSpacing: LineSpacingRelaxed, Justify: true}, margins: MarginsWide},
-		setting{style: Style{LineSpacing: LineSpacingCompact}, margins: MarginsNarrow},
+		setting{style: Typography{Font: "Charter", LineSpacing: LineSpacingRelaxed, Justify: true}, margins: MarginsWide},
+		setting{style: Typography{LineSpacing: LineSpacingCompact}, margins: MarginsNarrow},
 		setting{})
 	for _, st := range settings {
 		start := time.Now()
-		if err := s.SetStyle(st.style); err != nil {
-			t.Fatalf("SetStyle(%+v) error: %v", st.style, err)
+		if err := s.SetTypography(st.style); err != nil {
+			t.Fatalf("SetTypography(%+v) error: %v", st.style, err)
 		}
 		if err := s.Layout(NewGeometry(1384, 874, 52, 2, 21, SpreadAuto, st.margins), 21); err != nil {
 			t.Fatalf("Layout with margins %d error: %v", st.margins, err)
@@ -310,14 +310,14 @@ func TestParagraphsInStyles(t *testing.T) {
 		t.Fatalf("Open error: %v", err)
 	}
 	t.Cleanup(s.Close)
-	for _, style := range []Style{
+	for _, style := range []Typography{
 		{},
 		{LineSpacing: LineSpacingRelaxed},
 		{Justify: true},
 		{Font: "Charter", LineSpacing: LineSpacingRelaxed, Justify: true},
 	} {
-		if err := s.SetStyle(style); err != nil {
-			t.Fatalf("SetStyle(%+v) error: %v", style, err)
+		if err := s.SetTypography(style); err != nil {
+			t.Fatalf("SetTypography(%+v) error: %v", style, err)
 		}
 		if err := s.Layout(NewGeometry(700, 2000, 0, 1, 14, SpreadSingle, MarginsNormal), 14); err != nil {
 			t.Fatalf("Layout in %+v error: %v", style, err)
@@ -341,6 +341,30 @@ func TestParagraphsInStyles(t *testing.T) {
 					t.Errorf("in %+v, the middle of a line box of %+v hits %+v, %v, %v; want inside", style, p.Range, a, ok, err)
 				}
 			}
+		}
+	}
+}
+
+// TestBookColorsInTypography checks that the book's text colors survive the
+// reader's typography: a font of the reader's, relaxed lines and justified
+// paragraphs change the style sheet, never the colors drawn at render time.
+func TestBookColorsInTypography(t *testing.T) {
+	s := openColors(t)
+	geo := NewGeometry(600, 700, 0, 1, 14, SpreadSingle, MarginsNormal)
+	for _, typography := range []Typography{{}, {Font: "Georgia", LineSpacing: LineSpacingRelaxed, Justify: true}} {
+		if err := s.SetTypography(typography); err != nil {
+			t.Fatalf("SetTypography(%+v) error: %v", typography, err)
+		}
+		if err := s.Layout(geo, 14); err != nil {
+			t.Fatalf("Layout in %+v error: %v", typography, err)
+		}
+		renderChapter(t, s, 0, Style{BookColors: true})
+		layer, drawn := s.ColorLayer()
+		red := pixels(layer, func(r, g, b, a int) bool { return a > 200 && r > g+60 && r > b+60 })
+		blue := pixels(layer, func(r, g, b, a int) bool { return a > 200 && b > r+60 })
+		if !drawn || red == 0 || blue == 0 {
+			t.Errorf("in %+v with book colors: drawn %v, %d red and %d blue pixels; want the colored text in its hues",
+				typography, drawn, red, blue)
 		}
 	}
 }
