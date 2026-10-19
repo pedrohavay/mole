@@ -1,96 +1,184 @@
 <p align="center">
-  <img src="assets/AppIcon.appiconset/icon_256x256.png" width="128" height="128" alt="Mole">
+  <img src="assets/AppIcon.appiconset/icon_256x256.png" width="128" height="128" alt="Mole icon">
 </p>
 
 <h1 align="center">Mole</h1>
 
 <p align="center">An EPUB reader for the Mac where only the letters give off light.</p>
 
-Mole keeps the screen black and lights the text alone, using the Extended
-Dynamic Range (EDR) of Apple displays: glyphs are drawn brighter than SDR
-white while everything around them stays at zero. On a mini-LED or OLED
-screen the result reads like a lamp behind each letter, much closer to an
-e-ink night light than to a dark theme. The name comes from the animal: a
-mole lives in the dark and needs very little light to find its way.
+<p align="center">
+  <a href="LICENSE"><img alt="License: AGPL-3.0-or-later" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue"></a>
+  <img alt="macOS 14 or later" src="https://img.shields.io/badge/macOS-14%2B-lightgrey">
+  <img alt="Apple silicon" src="https://img.shields.io/badge/Apple%20silicon-arm64-lightgrey">
+</p>
+
+Mole keeps the screen black and lights only the text. It uses the Extended
+Dynamic Range (EDR) of Apple displays to draw glyphs brighter than SDR white
+while every other pixel stays at zero, so on a mini-LED or OLED screen each
+letter glows on its own and the rest of the panel stays off. The name comes
+from the animal, which lives in the dark and needs very little light to find
+its way.
+
+Mole is in early development and has no release builds yet.
 
 ## Features
 
-- **Dynamic light.** Text brightness follows the screen's EDR headroom, with
-  a level from a faint glow to many times SDR white, four text colors (white,
-  warm, amber and red) and three stroke weights.
-- **Instant brightness.** A one-point EDR layer keeps the headroom raised
-  while Mole is up, so a book opens at its final brightness instead of
-  fading in.
-- **Faithful EPUB layout.** Books are laid out and rasterized by MuPDF, with
-  one or two pages side by side.
-- **A real library.** Covers, shelves (reading, not started, finished),
-  search, recent books, drag and drop, and tabs for several open books that
-  come back on the next launch. Reading positions survive font and window
-  changes.
-- **Search, highlights, notes and bookmarks.** Search the whole book in the
-  background, select text to highlight it in five colors or attach a note,
-  bookmark pages, and copy every highlight of a book as Markdown. Highlights
-  are painted under the letters, dim, so they never outshine the text.
-- **Keyboard first.** Every reading control has a key, the library grid
-  moves with the arrow keys, and *Help > Keyboard Shortcuts* lists them all.
-- **English and Brazilian Portuguese**, picked from the system language.
+- Text light that follows the screen's EDR headroom, from a faint glow to
+  many times SDR white, in white, warm, amber or red, with three stroke
+  weights.
+- Books open at their final brightness. A one-point EDR layer keeps the
+  headroom raised while Mole is open, so the text does not fade in.
+- EPUB layout and rendering by MuPDF, one or two pages side by side.
+  Diagrams are inverted so their lines glow; photos and covers keep their
+  tones, and pictures stay dim by default.
+- A library with covers, shelves for books in progress, not started and
+  finished, search by title or author, drag and drop, and tabs that reopen
+  on the next launch.
+- Full-text search that runs in the background, highlights in five colors,
+  notes, bookmarks, and a way to copy all of a book's highlights as
+  Markdown.
+- Reading positions tied to the text, so the page you were on survives a
+  new font size or window size.
+- A keyboard shortcut for every reading control, and arrow-key navigation in
+  the library.
+- English and Brazilian Portuguese, picked from the system language.
 
-## Requirements
+## Installation
 
-- macOS 14 Sonoma or later on Apple silicon. EDR needs a display that
-  supports it, such as the Liquid Retina XDR of the MacBook Pro or the Pro
-  Display XDR; elsewhere the text stops at SDR white.
-- To build: Xcode 15.4 or later, Go 1.26 or later and MuPDF from Homebrew.
+Build Mole from source. With Xcode 15.4 or later and Go 1.26 or later
+installed:
 
 ```bash
 brew install mupdf-tools
 ```
 
-## Building
+```bash
+git clone https://github.com/pedrohavay/mole.git
+```
 
 ```bash
-make
+cd mole && make run
 ```
 
-This builds the Go core as a static library, the SwiftUI app against it, and
-assembles `build/Mole.app`. Other targets:
+`make run` builds `build/Mole.app` and opens it; copy it to `/Applications`
+to keep it. The build is signed ad hoc, which is enough on the Mac that
+built it. Gatekeeper refuses a copy downloaded from elsewhere until Mole has
+notarized releases.
 
-| Target        | What it does                                                        |
-|---------------|---------------------------------------------------------------------|
-| `make run`    | Builds and opens the app.                                           |
-| `make test`   | Runs the Go and Swift tests. Set `MOLE_TEST_EPUB` to an EPUB file to include the tests that open a real book. |
+## Usage
+
+Add books with File > Add Books (⌘O), by dropping EPUB files on the library,
+or with Open With > Mole in Finder. Mole copies each book into its library,
+so moving or deleting the original file does not break anything. Double-click
+a cover to open the book.
+
+Click the right side of the page, press →, or swipe left to turn the page;
+click the left third or press ← to go back. The sun button in the status bar
+sets the brightness, the EDR switch and the text color. The Aa button sets
+the text size, the stroke weight, one or two pages, and how pictures are
+shown.
+
+Drag across the text to select it. The bar above the selection highlights it
+in a color, adds a note, copies it, or searches the book for it. The side
+panel (⌥⌘C) holds the table of contents, the bookmarks, the notes and the
+search.
+
+### Keyboard shortcuts
+
+While reading:
+
+| Keys | Action |
+|------|--------|
+| → or Space or Page Down | Next page |
+| ← or ⇧Space or Page Up | Previous page |
+| Home, End | Beginning or end of the book |
+| ↑, ↓ | Brighter or dimmer text |
+| +, − | Bigger or smaller text |
+| E | Turn EDR on or off |
+| C | Next text color |
+| T or ⌥⌘C | Show or hide the side panel |
+| F or ⌃⌘F | Full screen |
+| Esc | Clear the selection, or leave full screen |
+
+Anywhere in the window:
+
+| Keys | Action |
+|------|--------|
+| ⌘O | Add books |
+| ⌘F, ⌘G, ⇧⌘G | Find in the book, next and previous result |
+| ⌘D | Bookmark the page |
+| ⇧⌘H | Highlight the selection |
+| ⌘C | Copy the selection |
+| ⌘W | Close the book |
+| ⌘1, ⌘2 to ⌘9 | Library, then the open books in tab order |
+| ⌃⇥, ⌃⇧⇥ | Next or previous tab |
+| ⌃⌘S | Show or hide the sidebar |
+| ⌥⌘↑, ⌥⌘↓ | Brighter or dimmer text |
+| ⌘, | Settings |
+
+Help > Keyboard Shortcuts shows the same list in the app.
+
+## Building from source
+
+Mole runs on macOS 14 Sonoma or later on Apple silicon. EDR needs a display
+that supports it, such as the Liquid Retina XDR of the MacBook Pro or the Pro
+Display XDR; on other screens the text stops at SDR white. To build it you
+need:
+
+- Xcode 15.4 or later. The Command Line Tools alone lack XCTest.
+- Go 1.26 or later.
+- MuPDF from Homebrew (`brew install mupdf-tools`).
+- librsvg (`brew install librsvg`), only to render the icon again after
+  editing `assets/Mole.svg`.
+
+`make` builds the Go core as a static library, builds the SwiftUI app against
+it, and assembles `build/Mole.app`. The other targets:
+
+| Target | What it does |
+|--------|--------------|
+| `make run` | Builds and opens the app. |
+| `make test` | Runs the Go and Swift tests. Set `MOLE_TEST_EPUB` to an EPUB file to add the tests that open a real book. |
 | `make verify` | Runs the app's self-check, which captures the library, a book and Settings into `build/verify`. Set `BOOK` to add an EPUB first. |
-| `make lint`   | Runs `gofmt` and `go vet` on the core.                              |
-| `make clean`  | Removes every build product.                                        |
+| `make lint` | Runs `gofmt` and `go vet` on the core. |
+| `make clean` | Removes every build product. |
 
-Things that trip up a first build:
+If `go version` is older than 1.26 and `GOTOOLCHAIN` is `local`, point `GO`
+at a newer toolchain, for example `make GO=$HOME/go/bin/go1.26.0`. The
+Makefile uses the Xcode in `/Applications/Xcode.app`; set `DEVELOPER_DIR` to
+use another one. Run `make core` once before opening `app/Package.swift` in
+Xcode, because the package needs the header the core build generates. For a
+MuPDF outside `/opt/homebrew`, set `MUPDF_LIB_DIR`.
 
-- **Go version.** The core needs Go 1.26. If `go version` is older and
-  `GOTOOLCHAIN` is `local`, point `GO` at a newer toolchain, for example
-  `make GO=$HOME/go/bin/go1.26.0`.
-- **Xcode.** The Makefile builds with the Xcode at
-  `/Applications/Xcode.app`; set `DEVELOPER_DIR` to use another one. The
-  Command Line Tools alone lack XCTest and are not enough.
-- **Opening the package in Xcode.** `app/Package.swift` needs the core's
-  generated header, so run `make core` once before opening it.
-- **MuPDF location.** Homebrew on Apple silicon installs to `/opt/homebrew`;
-  set `MUPDF_LIB_DIR` for a MuPDF elsewhere.
+The library lives in `~/Library/Application Support/Mole/library.db`, with
+the copies of the books in the `Books` folder next to it. Set `MOLE_LIBRARY`
+to use another database file.
 
-The library lives in `~/Library/Application Support/Mole/library.db`, and
-Mole keeps a copy of every book it adds in the `Books` folder next to it, so
-moving or deleting the original does not break the library. Set
-`MOLE_LIBRARY` to use another database file.
+## How it works
 
-## Repository layout
+Mole is two programs linked into one binary. The Go core owns the books and
+the data: it lays out EPUBs with MuPDF, renders the visible pages into a
+one-byte coverage mask and a separate image layer, and keeps the library,
+positions and annotations in SQLite. The SwiftUI app draws the window and
+hands the masks to a Metal shader, which writes `tint * gain * coverage^gamma`
+into an extended-range `rgba16Float` layer. The gain is the brightness level
+times the screen's current EDR headroom, so a fully covered pixel can go
+well past 1.0, the value of SDR white.
+
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) covers the C API between the two
+halves, how the light is produced, and the findings behind those choices.
+
+## Project layout
 
 ```
-core/                 Go: everything that is not user interface
+core/                 Go: the library, layout and rendering
   cmd/molecore/       the C API the app links against (c-archive)
   internal/epub/      EPUB metadata and covers
   internal/importer/  adding books to the library
-  internal/library/   the SQLite library: books, positions, settings
+  internal/library/   the SQLite library: books, settings, annotations
   internal/mupdf/     cgo binding to MuPDF
-  internal/reading/   page geometry, layout and coverage rendering
+  internal/reading/   page geometry, text anchors, search and rendering
+  internal/session/   an open book and how its position is saved
+  internal/testbook/  EPUB fixtures for the tests
 app/                  Swift: the macOS app (SwiftPM)
   Sources/MoleCore/   module map for the core's generated header
   Sources/Mole/
@@ -102,26 +190,39 @@ app/                  Swift: the macOS app (SwiftPM)
     Resources/        string tables (en, pt-BR)
     Support/          localization, formatting, window chrome
   Tests/MoleTests/
-assets/               app icon: Mole.svg is the source; scripts/icon.sh renders
-                      the PNGs and AppIcon.icns from it (needs librsvg)
-scripts/              bundling and the app icon (icon.sh)
+assets/               the app icon; Mole.svg is its source
+scripts/              bundling (bundle.sh) and icon rendering (icon.sh)
 docs/                 architecture notes
 ```
 
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how the halves fit,
-how the EDR light is produced and the choices behind them.
+## Contributing
 
-## Localization
+Issues and pull requests are welcome. Run `make lint test` before sending a
+change. Code comments are in English, and Go code follows `gofmt` and the
+usual godoc conventions.
 
-User-facing text lives in `app/Sources/Mole/Resources/<language>.lproj/Localizable.strings`
-and is looked up with `L10n.text("key")`. To add a language, copy the English
+User-facing text lives in
+`app/Sources/Mole/Resources/<language>.lproj/Localizable.strings` and is
+looked up with `L10n.text("key")`. To add a language, copy the English
 table, translate the values, and add the language to `LANGUAGES` in
-`scripts/bundle.sh`. The tests fail when a table misses a key, has a
-mismatched format specifier, or when the code uses a key no table has.
+`scripts/bundle.sh`. The tests fail when a table misses a key, when a
+translation changes a format specifier, or when the code uses a key that no
+table has.
 
 ## License
 
-Mole links MuPDF, which is licensed under the GNU AGPL v3 (or a commercial
-license from Artifex). A distributed build of Mole must therefore be offered
-under the AGPL, or Artifex's commercial license is needed. The license of
-Mole's own code has not been chosen yet.
+Copyright (C) 2026 Pedro Havay
+
+Mole is free software: you can redistribute it and/or modify it under the
+terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. See [LICENSE](LICENSE) for the full text.
+
+Mole links [MuPDF](https://mupdf.com), which Artifex distributes under the
+GNU AGPL version 3 or a commercial license.
+
+## Acknowledgements
+
+[MuPDF](https://mupdf.com) lays out and renders the books, and
+[modernc.org/sqlite](https://gitlab.com/cznic/sqlite) gives the core SQLite
+without a C dependency of its own.
