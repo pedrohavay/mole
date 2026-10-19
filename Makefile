@@ -5,7 +5,7 @@
 GO ?= go
 SWIFT ?= swift
 CONFIG ?= release
-VERSION ?= 0.1.0
+VERSION ?= 0.1.1
 # BUILD_NUMBER only grows: the commit count, or 0 outside a repository.
 BUILD_NUMBER ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 0)
 BUNDLE_ID ?= io.github.pedrohavay.mole
