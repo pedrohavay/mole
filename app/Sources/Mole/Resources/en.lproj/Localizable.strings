@@ -129,10 +129,22 @@
 "spread.automatic" = "Automatic";
 "spread.single" = "One Page";
 "spread.double" = "Two Pages";
-"images.title" = "Pictures";
-"images.dim" = "Dim";
-"images.off" = "Hidden";
-"images.full" = "Bright";
+"text.bookColors" = "Keep the book's colors";
+"text.bookColors.note" = "Colored headings, links and code keep their hues. Black and gray text keeps the text color.";
+"pictures.title" = "Pictures";
+"pictures.mode" = "Show";
+"pictures.original" = "Original Colors";
+"pictures.night" = "Night";
+"pictures.hidden" = "Hidden";
+"pictures.note" = "Night keeps photographs in their colors and inverts diagrams, so their lines glow and their paper stays dark. Pictures never go brighter than SDR white. Click a picture to see it full size.";
+"picture.title" = "Picture";
+"picture.zoomIn" = "Zoom In";
+"picture.zoomOut" = "Zoom Out";
+"picture.fit" = "Fit to Window";
+"picture.close" = "Close";
+"picture.scale" = "%ld%%";
+"picture.failed" = "Cannot open the picture";
+"error.picture" = "The picture could not be read.";
 
 /* Bookmarks, highlights and notes */
 "bookmark.add" = "Add Bookmark";
@@ -234,6 +246,7 @@
 "shortcut.contents" = "Show or hide the contents";
 "shortcut.fullScreen" = "Full screen";
 "shortcut.exitFullScreen" = "Leave full screen";
+"shortcut.picture" = "In a picture: zoom in, out, to fit, close";
 "shortcut.addBooks" = "Add books";
 "shortcut.closeBook" = "Close the book";
 "shortcut.library" = "Library";

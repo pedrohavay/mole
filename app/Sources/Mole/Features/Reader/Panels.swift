@@ -41,10 +41,12 @@ struct LightPanel: View {
     }
 }
 
-/// TextPanel holds the text size, the stroke weight and the page spread.
+/// TextPanel holds the text size, the stroke weight, the page spread and
+/// how the book's pictures and colors show.
 @MainActor
 struct TextPanel: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accent) private var accent
 
     var body: some View {
         @Bindable var model = model
@@ -78,12 +80,16 @@ struct TextPanel: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            Text(L10n.text("images.title")).font(Theme.label).foregroundStyle(Theme.secondary)
-            Picker(L10n.text("images.title"), selection: $model.settings.images) {
-                ForEach(ImageLight.allCases) { Text($0.title).tag($0) }
+            Text(L10n.text("pictures.title")).font(Theme.label).foregroundStyle(Theme.secondary)
+            Picker(L10n.text("pictures.title"), selection: $model.settings.pictures) {
+                ForEach(PictureMode.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            Divider()
+            Toggle(L10n.text("text.bookColors"), isOn: $model.settings.bookColors)
+                .toggleStyle(.switch)
+                .tint(accent)
         }
         .padding(Theme.Space.l)
         .frame(width: 300)
