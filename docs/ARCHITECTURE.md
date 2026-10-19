@@ -44,6 +44,39 @@ macOS of the machine that built it and change with every upgrade.
 and memory rules, `Library` and `Session` are the handle classes, and a
 `Session` closes (saving the position) when it is released.
 
+## Collections and synced folders
+
+Collections live in two tables, `collections` and `collection_books`, so a
+book can be in any number of them; the book list carries the ids of the
+collections that hold each book, and the app filters the grid with them. A
+collection made from a folder remembers the folder's path, so a book added
+to that folder later finds its collection even after the user renames it.
+
+The library knows a book's original file by its path, its size and its
+modification time. Importing a known path whose size or time changed
+replaces the library's copy and the book's metadata but keeps its id, place,
+annotations and collections. A file at an unknown path whose size and time
+match a book whose original is gone is that book, renamed or moved. Paths
+are stored with symbolic links resolved, the way FSEvents reports them, so
+`/tmp/a.epub` and `/private/tmp/a.epub` are one file.
+
+`importer.ImportFolder` walks a folder, skipping hidden files and the
+library's own `Books` folder, imports each EPUB and, when asked, puts it in
+the collection of its folder. A watched folder is stored in
+`watched_folders`; `importer.Sync` imports what is new or changed in it and
+marks the books whose file is gone (`books.missing`) instead of removing
+them. Collections are only filled with books a sync touched, so a book the
+user took out of a collection stays out. A folder that is not there, such as
+an unplugged disk, is not synced at all.
+
+In the app, `FolderWatcher` follows the watched folders with FSEvents and
+waits for a second and a half of quiet before it reports a change, since a
+copy writes a file many times. It ignores the library's own folder, so the
+database's writes do not trigger syncs of a folder that holds it. Folder
+imports and syncs run on the `Importer` queue, like file imports; every
+watched folder is synced once at launch to catch changes made while Mole was
+closed.
+
 ## Light: how the text glows
 
 The reader view is backed by a `CAMetalLayer` in `rgba16Float` with
@@ -117,15 +150,18 @@ Two things in MuPDF's text extraction needed care. It starts a new text
 block, which the core reads as a paragraph, wherever two lines are more
 than 1.5 em apart, which the relaxed spacing passes, so
 `mupdf.Document.SetLineDistance` joins such blocks back when their lines
-follow at the style's line height. And it cuts a justified line into pieces
-at its widest spaces, so hit tests pick the piece nearest the pointer and
-the boxes of a range join the pieces of a line into one.
+follow at the style's line height; the paragraphs VoiceOver and reading
+aloud go by stay whole. And it cuts a justified line into pieces at its
+widest spaces, so hit tests pick the piece nearest the pointer and the
+boxes of a range, which highlights, the spoken sentence and VoiceOver's
+paragraph frames are drawn from, join the pieces of a line into one.
 
 ## Marks under the text
 
-Highlights, the selection and search hits are rectangles the core returns
-for a text range (`mole_session_range_rects`), one per line, in view points.
-`ReaderTab` gathers those on screen as `PageMark`s; `ReaderCoordinator`
+Highlights, the selection, search hits and the sentence being read aloud
+are rectangles the core returns for a text range
+(`mole_session_range_rects`), one per line, in view points. `ReaderTab`
+gathers those on screen as `PageMark`s; `ReaderCoordinator`
 turns them into rectangles of light in drawable pixels, and `EDRRenderer`
 paints them first and the text over them, blended as
 `text + mark * (1 - coverage)`. Marks are dim (a fifth of SDR white at most)
@@ -135,6 +171,57 @@ letters instead of a block of light.
 Selection, highlights, notes and bookmarks are all addressed by text
 anchors (a chapter and a count of non-whitespace characters), never by page,
 so they stay put when the book is laid out again.
+
+## Accessibility
+
+The page is drawn into a Metal layer, so AppKit knows nothing of its text.
+`EDRMetalView` describes it to assistive apps itself (`PageAccessibility`):
+it is a group labeled with the book and the page, and its children are
+static text elements, one per paragraph on screen. The core gives the
+paragraphs of a range with `mole_session_paragraphs`, each with its anchors
+and text, split at page breaks so that each part lies on one page; its frame
+is the union of the part's line boxes from `mole_session_range_rects`. The
+elements are made only when an assistive app asks for them and are dropped
+when the page changes, so the page costs nothing while VoiceOver is off.
+
+A page turn posts a layout change and an announcement of the new page and
+chapter, except while the book is read aloud. Custom actions (Next Page,
+Previous Page) and the scroll-by-page actions VoiceOver's scroll commands
+send turn the page; AppKit has no constants for the latter, so the view
+answers them through the older string-based actions.
+
+The rest of the window is SwiftUI, labeled where the default reading falls
+short: the sidebar, the tab strip, the side panel and the status bar are
+labeled groups, rows give a title as the label and counts or progress as
+the value, and context menu commands are also accessibility actions.
+`Motion` leaves out the sidebar and panel animations when Reduce Motion is
+on, and the cover no longer lifts under the pointer. `Theme.contrasting`
+makes the hairlines and the secondary text tokens stronger while Increase
+Contrast is on.
+
+`make verify` walks the accessibility tree through the AX API, as VoiceOver
+sees it, and writes it to `build/verify/ax-*.txt`. The AX API answers only a
+trusted process; started from a terminal that has the Accessibility
+permission, the app is.
+
+## Reading aloud
+
+`ReadAloud` speaks with `AVSpeechSynthesizer`, one utterance per sentence,
+keeping a few in the synthesizer's queue. It asks the core for the
+paragraphs after the place it reached, about 1,500 characters at a time,
+joins the parts of a paragraph that runs over a page break, and splits them
+into sentences with `NLTokenizer`. A sentence's characters are mapped back
+to anchors by counting them the way the core does (whitespace, invisible
+format characters and hyphens take no offset), so the sentence being spoken
+becomes a mark under the text, and each word the synthesizer reaches turns
+the page when it is not on screen. Reading goes on across chapters until
+the end of the book.
+
+MuPDF does not expose an EPUB's language, so `NLLanguageRecognizer` guesses
+it from a few thousand characters of text, and the voice is the one picked
+in Settings if it speaks that language, or else the best installed voice for
+it, from the user's region first. Reading stops when the book closes or
+another tab is shown.
 
 ## Positions that survive relayout
 
@@ -170,6 +257,33 @@ so hits appear as they are found.
 `@Observable` model changes, but it does when a focused value changes, so the
 window publishes a `MenuState` with `focusedSceneValue` and the menus read
 that.
+
+## Updates
+
+`Updater` wraps Sparkle's `SPUStandardUpdaterController`. It starts only
+when Info.plist names an HTTPS feed (`SUFeedURL`) and holds the EdDSA public
+key that verifies updates (`SUPublicEDKey`). The Makefile writes both through
+`scripts/bundle.sh`, from `SPARKLE_FEED_URL` and `SPARKLE_PUBLIC_KEY`; only
+releases set the key, so development and CI builds never start the updater,
+and the app menu's Check for Updates item and the Updates section of
+Settings are hidden. The self-checks (`--smoke-test`, `--verify-dir`) never
+start it either, so they stay off the network and out of the user defaults.
+`SUVerifyUpdateBeforeExtraction` makes Sparkle check the signature before it
+unpacks an update.
+
+Sparkle comes from SwiftPM as a binary framework. `bundle.sh` copies it into
+`Contents/Frameworks`, where the executable's rpath points, without its XPC
+services, which only sandboxed apps use. `scripts/release.sh` signs its
+nested code inside out, then the app, all with the hardened runtime. Library
+validation then loads Sparkle because both carry the same team ID; an ad hoc
+dry run has no team ID, so only that build turns library validation off.
+
+Each release publishes `appcast.xml` next to the zip, and the app reads the
+one of the latest GitHub release. `release.sh` writes the appcast from the
+app's Info.plist (version, build number, minimum macOS), signs the zip with
+Sparkle's `sign_update`, and checks the signature against the app's public
+key with CryptoKit (`scripts/ed25519-verify.swift`) before anything reaches
+`build/release`.
 
 ## Localization
 

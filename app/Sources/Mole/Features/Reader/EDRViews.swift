@@ -14,6 +14,11 @@ final class EDRMetalView: NSView, NSMenuItemValidation {
     var onMenu: ((CGPoint) -> NSMenu?)?
     var onCopy: (() -> Void)?
     var canCopy: (() -> Bool)?
+    /// OnLookUp receives a force click or the trackpad's look-up gesture.
+    var onLookUp: ((CGPoint) -> Void)?
+    /// PageAccessibility is what VoiceOver reads of the page; see
+    /// PageAccessibility.swift.
+    let pageAccessibility = PageAccessibility()
 
     enum MouseStep {
         case down, dragged, up
@@ -79,6 +84,22 @@ final class EDRMetalView: NSView, NSMenuItemValidation {
     private func point(of event: NSEvent) -> CGPoint {
         let point = convert(event.locationInWindow, from: nil)
         return CGPoint(x: point.x, y: bounds.height - point.y)
+    }
+
+    override func quickLook(with event: NSEvent) {
+        onLookUp?(point(of: event))
+    }
+
+    /// Shows the system dictionary for text, set at the text's box in the
+    /// view (from the top left), as Look Up does in text views.
+    func showDefinition(of text: String, at box: CGRect) {
+        let font = NSFont(name: "Georgia", size: max(12, box.height * 0.72)) ?? .systemFont(ofSize: 15)
+        // AppKit draws the word on a yellow marker, as in any text view.
+        let string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.black])
+        // The point is the baseline of the text's first line, from the
+        // bottom left, as AppKit counts.
+        let baseline = NSPoint(x: box.minX, y: bounds.height - box.maxY + box.height * 0.22)
+        showDefinition(for: string, at: baseline)
     }
 
     @objc func copy(_ sender: Any?) {

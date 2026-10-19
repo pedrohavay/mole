@@ -18,6 +18,8 @@ import (
 var (
 	ErrNotFound           = errors.New("library: book not found")
 	ErrAnnotationNotFound = errors.New("library: annotation not found")
+	ErrCollectionNotFound = errors.New("library: collection not found")
+	ErrFolderNotFound     = errors.New("library: folder not found")
 )
 
 // Book is a book in the library.
@@ -31,6 +33,44 @@ type Book struct {
 	AddedAt      time.Time
 	OpenedAt     time.Time // zero if the book was never opened
 	Position     Position
+	Source       Stamp   // OriginalPath when it was last imported; zero if unknown
+	Missing      bool    // OriginalPath left a watched folder
+	Collections  []int64 // the collections that hold the book
+}
+
+// Stamp tells one version of a file from another by its size and
+// modification time. With the file's path it is the identity of a book's
+// original, so a changed or renamed file updates its book instead of adding
+// a second one. The zero Stamp is unknown, as for books imported before
+// stamps were kept.
+type Stamp struct {
+	Size    int64
+	ModTime time.Time
+}
+
+// Known reports whether the stamp was recorded.
+func (st Stamp) Known() bool {
+	return !st.ModTime.IsZero()
+}
+
+// Equal reports whether st and other describe the same version of a file.
+func (st Stamp) Equal(other Stamp) bool {
+	return st.Size == other.Size && st.ModTime.Equal(other.ModTime)
+}
+
+// columns returns the stamp as stored: -1 and 0 when unknown.
+func (st Stamp) columns() (size, modTime int64) {
+	if !st.Known() {
+		return -1, 0
+	}
+	return st.Size, st.ModTime.UnixNano()
+}
+
+func stampFromColumns(size, modTime int64) Stamp {
+	if size < 0 || modTime == 0 {
+		return Stamp{}
+	}
+	return Stamp{Size: size, ModTime: time.Unix(0, modTime)}
 }
 
 // Position is where a book was left. Chapter and Offset are the anchor of
@@ -140,6 +180,31 @@ var migrations = []string{
 	UPDATE books SET original_path = path;
 	CREATE UNIQUE INDEX books_by_original_path ON books (original_path);`,
 	`ALTER TABLE reader_settings ADD COLUMN images INTEGER NOT NULL DEFAULT 0;`,
+	`ALTER TABLE books ADD COLUMN source_size INTEGER NOT NULL DEFAULT -1;
+	ALTER TABLE books ADD COLUMN source_mtime INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE books ADD COLUMN missing INTEGER NOT NULL DEFAULT 0;
+	CREATE INDEX books_by_source ON books (source_size, source_mtime);
+	CREATE TABLE collections (
+		id         INTEGER PRIMARY KEY,
+		name       TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+		folder     TEXT    NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL
+	);
+	CREATE UNIQUE INDEX collections_by_folder ON collections (folder) WHERE folder != '';
+	CREATE TABLE collection_books (
+		collection_id INTEGER NOT NULL REFERENCES collections (id) ON DELETE CASCADE,
+		book_id       INTEGER NOT NULL REFERENCES books (id) ON DELETE CASCADE,
+		added_at      INTEGER NOT NULL,
+		PRIMARY KEY (collection_id, book_id)
+	);
+	CREATE INDEX collection_books_by_book ON collection_books (book_id);
+	CREATE TABLE watched_folders (
+		id          INTEGER PRIMARY KEY,
+		path        TEXT    NOT NULL UNIQUE,
+		collections INTEGER NOT NULL DEFAULT 0,
+		added_at    INTEGER NOT NULL,
+		synced_at   INTEGER NOT NULL DEFAULT 0
+	);`,
 	`ALTER TABLE reader_settings ADD COLUMN font TEXT NOT NULL DEFAULT '';
 	ALTER TABLE reader_settings ADD COLUMN line_spacing INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE reader_settings ADD COLUMN margins INTEGER NOT NULL DEFAULT 0;
@@ -211,14 +276,31 @@ func (s *Store) migrate() error {
 
 // bookColumns are the columns scanBook reads, in order.
 const bookColumns = `id, path, original_path, title, author, added_at, opened_at,
-	chapter, chapter_offset, chapter_fraction, fraction`
+	chapter, chapter_offset, chapter_fraction, fraction, source_size, source_mtime, missing`
 
 // Books returns every book, most recently opened first, then most recently
 // added, without their covers.
 func (s *Store) Books() ([]Book, error) {
-	rows, err := s.db.Query(`SELECT ` + bookColumns + ` FROM books ORDER BY opened_at DESC, added_at DESC, id DESC`)
+	books, err := s.queryBooks(`SELECT ` + bookColumns + ` FROM books ORDER BY opened_at DESC, added_at DESC, id DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list books: %w", err)
+	}
+	held, err := s.memberships()
+	if err != nil {
+		return nil, err
+	}
+	for i := range books {
+		books[i].Collections = held[books[i].ID]
+	}
+	return books, nil
+}
+
+// queryBooks runs a query that selects bookColumns and returns the books it
+// finds, without their collections.
+func (s *Store) queryBooks(query string, args ...any) ([]Book, error) {
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
 	var books []Book
@@ -229,10 +311,7 @@ func (s *Store) Books() ([]Book, error) {
 		}
 		books = append(books, b)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list books: %w", err)
-	}
-	return books, nil
+	return books, rows.Err()
 }
 
 // Book returns the book with id, with its cover.
@@ -243,8 +322,14 @@ func (s *Store) Book(id int64) (Book, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return Book{}, ErrNotFound
 	}
+	if err != nil {
+		return Book{}, fmt.Errorf("read book %d: %w", id, err)
+	}
 	b.Cover = cover
-	return b, err
+	if b.Collections, err = s.collectionsOf(id); err != nil {
+		return Book{}, err
+	}
+	return b, nil
 }
 
 // BookByOriginalPath returns the book imported from path, with its cover,
@@ -268,9 +353,11 @@ func (s *Store) Add(b Book, now time.Time) (Book, error) {
 	if b.OriginalPath == "" {
 		b.OriginalPath = b.Path
 	}
+	size, modTime := b.Source.columns()
 	res, err := s.db.Exec(`
-		INSERT INTO books (path, original_path, title, author, cover, added_at) VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT DO NOTHING`, b.Path, b.OriginalPath, b.Title, b.Author, b.Cover, now.Unix())
+		INSERT INTO books (path, original_path, title, author, cover, added_at, source_size, source_mtime)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT DO NOTHING`, b.Path, b.OriginalPath, b.Title, b.Author, b.Cover, now.Unix(), size, modTime)
 	if err != nil {
 		return Book{}, fmt.Errorf("add %s: %w", b.Path, err)
 	}
@@ -475,12 +562,14 @@ type scanner interface {
 // extra.
 func scanBook(row scanner, extra ...any) (Book, error) {
 	var b Book
-	var added, opened int64
+	var added, opened, size, modTime int64
 	dest := append([]any{&b.ID, &b.Path, &b.OriginalPath, &b.Title, &b.Author, &added, &opened,
-		&b.Position.Chapter, &b.Position.Offset, &b.Position.ChapterFraction, &b.Position.Fraction}, extra...)
+		&b.Position.Chapter, &b.Position.Offset, &b.Position.ChapterFraction, &b.Position.Fraction,
+		&size, &modTime, &b.Missing}, extra...)
 	if err := row.Scan(dest...); err != nil {
 		return Book{}, err
 	}
+	b.Source = stampFromColumns(size, modTime)
 	b.AddedAt = time.Unix(added, 0)
 	if opened != 0 {
 		b.OpenedAt = time.Unix(opened, 0)

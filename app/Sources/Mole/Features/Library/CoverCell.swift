@@ -2,11 +2,13 @@ import SwiftUI
 
 /// CoverCell is one book of the grid: a click selects it, a double click
 /// opens it, and the options button or a secondary click shows its menu. The
-/// cover lifts while the pointer is over it.
+/// cover lifts while the pointer is over it, unless Reduce Motion is on,
+/// and can be dragged onto a collection in the sidebar.
 @MainActor
 struct CoverCell: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accent) private var accent
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let book: Book
     let selected: Bool
     /// OnSelect runs after a click selects the book.
@@ -25,10 +27,19 @@ struct CoverCell: View {
                     .foregroundStyle(Theme.text.opacity(hovering || selected ? 1 : 0.88))
                     .lineLimit(1)
                 HStack(spacing: Theme.Space.xs) {
-                    Text(caption)
-                        .font(Theme.font(11, book.lastOpened == nil ? .semibold : .regular))
-                        .foregroundStyle(book.lastOpened == nil ? accent : Theme.secondary)
-                        .lineLimit(1)
+                    if book.missing {
+                        Label(caption, systemImage: "exclamationmark.triangle.fill")
+                            .labelStyle(.titleAndIcon)
+                            .font(Theme.font(11, .medium))
+                            .foregroundStyle(Theme.caution)
+                            .lineLimit(1)
+                            .help(L10n.text("book.missing.help"))
+                    } else {
+                        Text(caption)
+                            .font(Theme.font(11, book.lastOpened == nil ? .semibold : .regular))
+                            .foregroundStyle(book.lastOpened == nil ? accent : Theme.secondary)
+                            .lineLimit(1)
+                    }
                     Spacer(minLength: 0)
                     options
                 }
@@ -44,18 +55,23 @@ struct CoverCell: View {
             model.selectedBook = book.id
             onSelect()
         })
+        .draggable(BookDrag(id: book.id)) { dragPreview }
         .contextMenu { menuItems }
         .popover(isPresented: $showInfo, arrowEdge: .trailing) { BookInfo(book: book) }
         .help(book.author.isEmpty ? book.title : "\(book.title) · \(book.author)")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(book.author.isEmpty ? book.title : "\(book.title), \(book.author)")
-        .accessibilityValue(caption)
+        .accessibilityValue(book.lastOpened == nil ? L10n.text("book.unread") : caption)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction(named: L10n.text("action.open")) { model.open(book) }
+        .accessibilityAction { model.open(book) }
+        .accessibilityAction(named: L10n.text("book.info")) { showInfo = true }
+        .accessibilityAction(named: L10n.text("action.revealInFinder")) { model.revealInFinder(book) }
+        .accessibilityAction(named: L10n.text("library.remove")) { model.remove(book) }
     }
 
     @ViewBuilder private var cover: some View {
         let shape = RoundedRectangle(cornerRadius: 3, style: .continuous)
+        let lifted = hovering && !reduceMotion
         Group {
             if let image = model.covers[book.id] {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
@@ -67,10 +83,22 @@ struct CoverCell: View {
         }
         .clipShape(shape)
         .overlay(shape.strokeBorder(Color.white.opacity(hovering ? 0.14 : 0.06)))
-        .shadow(color: .black.opacity(hovering ? 0.75 : 0.55), radius: hovering ? 14 : 8, y: hovering ? 7 : 3)
+        .shadow(color: .black.opacity(lifted ? 0.75 : 0.55), radius: lifted ? 14 : 8, y: lifted ? 7 : 3)
         .overlay(shape.strokeBorder(selected ? accent : .clear, lineWidth: 2.5).padding(-4))
-        .scaleEffect(hovering ? 1.03 : 1, anchor: .bottom)
-        .offset(y: hovering ? -2 : 0)
+        .scaleEffect(lifted ? 1.03 : 1, anchor: .bottom)
+        .offset(y: lifted ? -2 : 0)
+    }
+
+    private var dragPreview: some View {
+        Group {
+            if let image = model.covers[book.id] {
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
+            } else {
+                RoundedRectangle(cornerRadius: 3).fill(Theme.raised).aspectRatio(2.0 / 3.0, contentMode: .fit)
+            }
+        }
+        .frame(width: 64)
+        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
     }
 
     private var options: some View {
@@ -90,6 +118,7 @@ struct CoverCell: View {
     }
 
     private var caption: String {
+        if book.missing { return L10n.text("book.missing") }
         if book.lastOpened == nil { return L10n.text("book.new") }
         if book.isFinished { return L10n.text("book.finished") }
         return L10n.format("book.percentRead", Int(book.fraction * 100))
@@ -99,6 +128,25 @@ struct CoverCell: View {
         Button { model.open(book) } label: { Label(L10n.text("action.open"), systemImage: "book") }
         Button { showInfo = true } label: { Label(L10n.text("book.info"), systemImage: "info.circle") }
         Button { model.revealInFinder(book) } label: { Label(L10n.text("action.revealInFinder"), systemImage: "folder") }
+        Divider()
+        Menu {
+            ForEach(model.collections) { collection in
+                Toggle(collection.name, isOn: Binding {
+                    book.collections.contains(collection.id)
+                } set: { member in
+                    model.set(book, in: collection, member)
+                })
+            }
+            if !model.collections.isEmpty { Divider() }
+            Button(L10n.text("menu.newCollection")) { model.createCollection(with: [book.id]) }
+        } label: {
+            Label(L10n.text("book.addToCollection"), systemImage: "rectangle.stack.badge.plus")
+        }
+        if let collection = model.currentCollection, book.collections.contains(collection.id) {
+            Button { model.set(book, in: collection, false) } label: {
+                Label(L10n.format("book.removeFromCollection", collection.name), systemImage: "rectangle.stack.badge.minus")
+            }
+        }
         Divider()
         Button(role: .destructive) { model.remove(book) } label: {
             Label(L10n.text("library.remove"), systemImage: "trash")

@@ -24,13 +24,22 @@ let package = Package(
     name: "Mole",
     defaultLocalization: "en",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        // Sparkle checks for and installs updates. It is pinned to one
+        // release; scripts/bundle.sh embeds its framework in Mole.app.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
+    ],
     targets: [
         .systemLibrary(name: "MoleCore", path: "Sources/MoleCore"),
         .executableTarget(
             name: "Mole",
-            dependencies: ["MoleCore"],
+            dependencies: ["MoleCore", .product(name: "Sparkle", package: "Sparkle")],
             resources: [.process("Resources")],
-            linkerSettings: coreLinking
+            // Inside Mole.app the executable finds Sparkle.framework in
+            // Contents/Frameworks.
+            linkerSettings: coreLinking + [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"]),
+            ]
         ),
         .testTarget(
             name: "MoleTests",

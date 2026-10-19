@@ -10,6 +10,15 @@ func decimal(_ value: Double, _ digits: Int) -> String {
     return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.\(digits)f", value)
 }
 
+/// Writes how long ago a date was in words, in the app's language, as
+/// VoiceOver reads it: "3 days ago".
+func spokenAge(_ date: Date, now: Date = Date()) -> String {
+    let formatter = RelativeDateTimeFormatter()
+    formatter.locale = Locale(identifier: L10n.bundle.preferredLocalizations.first ?? "en")
+    formatter.unitsStyle = .full
+    return formatter.localizedString(for: date, relativeTo: now)
+}
+
 /// Writes how long ago a date was, compactly: "49m", "3h", "2d".
 func compactAge(_ date: Date, now: Date = Date()) -> String {
     let seconds = max(0, now.timeIntervalSince(date))

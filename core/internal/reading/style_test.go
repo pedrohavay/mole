@@ -294,3 +294,53 @@ func TestStylesInBook(t *testing.T) {
 		}
 	}
 }
+
+// TestParagraphsInStyles checks that the paragraphs read aloud and read by
+// VoiceOver stay whole in relaxed and justified text, whose lines MuPDF
+// splits into blocks and pieces, and that their boxes cover their text.
+func TestParagraphsInStyles(t *testing.T) {
+	words := strings.Fields("a reader sets long and short words in lines of text that wrap at different places")
+	var paragraph strings.Builder
+	for i := range 60 {
+		paragraph.WriteString(words[(i*5)%len(words)] + " ")
+	}
+	body := strings.Repeat("<p>"+paragraph.String()+"</p>", 3)
+	s, err := Open(testbook.Chapters(t, body), Location{Offset: -1})
+	if err != nil {
+		t.Fatalf("Open error: %v", err)
+	}
+	t.Cleanup(s.Close)
+	for _, style := range []Style{
+		{},
+		{LineSpacing: LineSpacingRelaxed},
+		{Justify: true},
+		{Font: "Charter", LineSpacing: LineSpacingRelaxed, Justify: true},
+	} {
+		if err := s.SetStyle(style); err != nil {
+			t.Fatalf("SetStyle(%+v) error: %v", style, err)
+		}
+		if err := s.Layout(NewGeometry(700, 2000, 0, 1, 14, SpreadSingle, MarginsNormal), 14); err != nil {
+			t.Fatalf("Layout in %+v error: %v", style, err)
+		}
+		visible, err := s.VisibleRange()
+		if err != nil {
+			t.Fatalf("VisibleRange error: %v", err)
+		}
+		parts, err := s.Paragraphs(visible, 0)
+		if err != nil || len(joined(parts)) != 3 {
+			t.Fatalf("Paragraphs in %+v = %d paragraphs (%v), want 3", style, len(joined(parts)), err)
+		}
+		for _, p := range parts {
+			rects, err := s.RangeRects(p.Range)
+			if err != nil || len(rects) < 3 {
+				t.Fatalf("RangeRects of a paragraph in %+v = %d boxes, %v; want one per line", style, len(rects), err)
+			}
+			for _, r := range rects {
+				a, ok, err := s.HitTest(r.X+r.Width/2, r.Y+r.Height/2)
+				if err != nil || !ok || a.Compare(p.Range.Start) < 0 || a.Compare(p.Range.End) >= 0 {
+					t.Errorf("in %+v, the middle of a line box of %+v hits %+v, %v, %v; want inside", style, p.Range, a, ok, err)
+				}
+			}
+		}
+	}
+}

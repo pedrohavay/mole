@@ -288,6 +288,9 @@ func TestMigrateKeepsData(t *testing.T) {
 	if b.OriginalPath != "/old.epub" || b.Position.Offset != -1 {
 		t.Errorf("migrated book from %q at offset %d, want from its own path at offset -1", b.OriginalPath, b.Position.Offset)
 	}
+	if b.Source.Known() || b.Missing || b.Collections != nil {
+		t.Errorf("migrated book has source %+v, missing %v, collections %v; want unknown, unmarked, in none", b.Source, b.Missing, b.Collections)
+	}
 	var version int
 	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != len(migrations) {
 		t.Errorf("user_version after migrating = %d, %v; want %d", version, err, len(migrations))

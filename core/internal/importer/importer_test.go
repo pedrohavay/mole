@@ -22,6 +22,17 @@ func openStore(t *testing.T) *library.Store {
 	return s
 }
 
+// tempDir returns a new temporary directory without symbolic links in its
+// path, the way Import names the files in it.
+func tempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("EvalSymlinks error: %v", err)
+	}
+	return dir
+}
+
 func booksIn(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -37,7 +48,7 @@ func booksIn(t *testing.T, dir string) []string {
 
 func TestImport(t *testing.T) {
 	store := openStore(t)
-	downloads := t.TempDir()
+	downloads := tempDir(t)
 	original := testbook.Book{Title: "Imported", Chapters: []string{"<p>Hello.</p>"}}.
 		WriteTo(t, filepath.Join(downloads, strings.Repeat("long name ", 20)+".epub"))
 	now := time.Unix(1_700_000_000, 0)
@@ -110,5 +121,63 @@ func TestCopyName(t *testing.T) {
 		if got := copyName(tt.give); got != tt.want {
 			t.Errorf("copyName(%q) = %q, want %q", tt.give, got, tt.want)
 		}
+	}
+}
+
+func TestImportIdentity(t *testing.T) {
+	store := openStore(t)
+	dir := tempDir(t)
+	original := writeBook(t, dir, "a.epub", "First")
+	now := time.Unix(1_700_000_000, 0)
+	b, err := Import(store, original, now)
+	if err != nil {
+		t.Fatalf("Import error: %v", err)
+	}
+	if !b.Source.Known() {
+		t.Errorf("Import recorded source %+v, want the file's size and time", b.Source)
+	}
+
+	// A changed file replaces the book's copy and metadata.
+	writeBook(t, dir, "a.epub", "First, revised")
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(original, later, later); err != nil {
+		t.Fatalf("Chtimes error: %v", err)
+	}
+	changed, err := Import(store, original, now)
+	if err != nil || changed.ID != b.ID || changed.Title != "First, revised" || changed.Path == b.Path {
+		t.Errorf("Import of a changed file = {%d %q at %s}, %v; want book %d revised in a new copy", changed.ID, changed.Title, changed.Path, err, b.ID)
+	}
+	if names := booksIn(t, store.BooksDir()); len(names) != 1 {
+		t.Errorf("Books directory holds %v after a change, want one copy", names)
+	}
+
+	// A renamed file is the same book.
+	renamed := filepath.Join(dir, "b.epub")
+	if err := os.Rename(original, renamed); err != nil {
+		t.Fatalf("Rename error: %v", err)
+	}
+	moved, err := Import(store, renamed, now)
+	if err != nil || moved.ID != b.ID || moved.OriginalPath != renamed {
+		t.Errorf("Import of a renamed file = {%d from %s}, %v; want book %d from %s", moved.ID, moved.OriginalPath, err, b.ID, renamed)
+	}
+
+	// A copy next to the original is another book.
+	twin := filepath.Join(dir, "twin.epub")
+	data, _ := os.ReadFile(renamed)
+	if err := os.WriteFile(twin, data, 0o644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+	if err := os.Chtimes(twin, later, later); err != nil {
+		t.Fatalf("Chtimes error: %v", err)
+	}
+	other, err := Import(store, twin, now)
+	if err != nil || other.ID == b.ID {
+		t.Errorf("Import of a copy whose original still exists = %d, %v; want a new book", other.ID, err)
+	}
+	if books, _ := store.Books(); len(books) != 2 {
+		t.Errorf("library holds %d books, want 2", len(books))
+	}
+	if _, err := Import(store, dir, now); err == nil {
+		t.Error("Import of a folder: got nil error")
 	}
 }
