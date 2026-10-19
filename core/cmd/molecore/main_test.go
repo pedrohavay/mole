@@ -23,6 +23,7 @@ func TestLastErrorKind(t *testing.T) {
 		want int
 	}{
 		{give: fmt.Errorf("import /b.mobi: %w", bookfile.ErrDRM), want: errorKindDRM},
+		{give: fmt.Errorf("import /c.pdf: %w", bookfile.ErrPassword), want: errorKindPassword},
 		{give: errors.New("cannot read"), want: errorKindOther},
 	}
 	for _, tt := range tests {
@@ -93,10 +94,25 @@ func TestJSONShapes(t *testing.T) {
 				Failed: []importer.Failure{
 					{Path: "/books/x.epub", Err: errors.New("not a zip")},
 					{Path: "/books/y.mobi", Err: fmt.Errorf("import /books/y.mobi: %w", bookfile.ErrDRM)},
+					{Path: "/books/z.pdf", Err: fmt.Errorf("import /books/z.pdf: %w", bookfile.ErrPassword)},
 				}}),
 			want: `{"folder":1,"found":3,"added":[9],"updated":[],"missing":[],"failed":[` +
-				`{"path":"/books/x.epub","error":"not a zip","drm":false},` +
-				`{"path":"/books/y.mobi","error":"import /books/y.mobi: this book is protected by DRM","drm":true}]}`,
+				`{"path":"/books/x.epub","error":"not a zip","drm":false,"password":false},` +
+				`{"path":"/books/y.mobi","error":"import /books/y.mobi: this book is protected by DRM","drm":true,"password":false},` +
+				`{"path":"/books/z.pdf","error":"import /books/z.pdf: this PDF is protected by a password","drm":false,"password":true}]}`,
+		},
+		{
+			name: "FixedState",
+			give: stateJSON{Page: 2, LastVisible: 3, Pages: 6, Columns: 2, Chapter: "Maps", Progress: 0.6, Characters: 900,
+				Fixed: true, Viewport: &viewportJSON{Fit: 1, Scale: 1.5, FitPage: 1, FitWidth: 1.5, Width: 900, Height: 1188,
+					X: 0, Y: 40, MaxX: 0, MaxY: 500}},
+			want: `{"page":2,"lastVisible":3,"pages":6,"columns":2,"chapter":"Maps","progress":0.6,"characters":900,"fixed":true,` +
+				`"viewport":{"fit":1,"scale":1.5,"fitPage":1,"fitWidth":1.5,"width":900,"height":1188,"x":0,"y":40,"maxX":0,"maxY":500}}`,
+		},
+		{
+			name: "ReflowableState",
+			give: stateJSON{Page: 1, LastVisible: 1, Pages: 9, Columns: 1, Progress: 0.125, Characters: 1200},
+			want: `{"page":1,"lastVisible":1,"pages":9,"columns":1,"chapter":"","progress":0.125,"characters":1200,"fixed":false}`,
 		},
 		{
 			name: "Settings",

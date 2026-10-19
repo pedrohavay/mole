@@ -50,6 +50,8 @@ final class ReaderTab: Identifiable {
     /// Paragraphs caches the paragraphs of the visible pages for the
     /// revision they were read at; they are read only when asked for.
     @ObservationIgnored private var paragraphs: (revision: Int, list: [PageParagraph])?
+    /// ViewSize is the size of the view the book is laid out for.
+    @ObservationIgnored private var viewSize = CGSize.zero
     @ObservationIgnored private var bookLanguage: String??
     /// TimeLeft estimates the reading time to the end of the chapter and of
     /// the book, at the reader's pace; nil until a screen of text is known.
@@ -99,6 +101,7 @@ final class ReaderTab: Identifiable {
                 typography: Typography) throws {
         try session.layout(width: width, height: height, scale: scale, fontSize: fontSize, spread: spread,
                            typography: typography)
+        viewSize = CGSize(width: width, height: height)
         chapters = (try? session.chapters()) ?? []
         refresh()
     }
@@ -127,6 +130,94 @@ final class ReaderTab: Identifiable {
 
     func goToEnd() { go(to: max(0, state.pages - 1)) }
 
+    // MARK: Fixed pages
+
+    /// IsFixedLayout reports whether the book has fixed pages, such as a
+    /// PDF: they are zoomed and scrolled instead of reflowed, and the
+    /// typography does not apply.
+    var isFixedLayout: Bool { state.fixed }
+
+    /// Zooms the pages of a book of fixed pages in by steps, or out when
+    /// steps is negative.
+    func zoom(by steps: Int) {
+        moveView { try session.zoom(by: steps) }
+    }
+
+    /// Fits the pages of a book of fixed pages to the view, whole or by
+    /// their width.
+    func zoom(to fit: Fit) {
+        moveView { try session.setZoom(fit) }
+    }
+
+    /// Draws the pages of a book of fixed pages at scale view points per
+    /// point of the page.
+    func zoom(scale: Double) {
+        moveView { try session.setZoom(.scale, scale: scale) }
+    }
+
+    /// Scrolls within pages larger than the view by dx, dy points; a
+    /// positive dy shows what is further down.
+    func pan(dx: Double, dy: Double) {
+        moveView { try session.pan(dx: dx, dy: dy) }
+    }
+
+    /// Moves a screen on (direction 1) or back (-1): within pages taller
+    /// than the view it scrolls by screen points, and at their bottom or top
+    /// it turns the page, showing the top of the next page or the bottom of
+    /// the one before.
+    func page(_ direction: Int, screen: Double) {
+        guard let viewport = state.viewport, viewport.maxY > 0.5 else { return turn(direction) }
+        if direction > 0 {
+            if viewport.y < viewport.maxY - 0.5 { pan(dx: 0, dy: screen) } else { turn(1) }
+        } else if viewport.y > 0.5 {
+            pan(dx: 0, dy: -screen)
+        } else {
+            let page = state.page
+            turn(-1)
+            if state.page != page { pan(dx: 0, dy: .greatestFiniteMagnitude) }
+        }
+    }
+
+    /// Runs a change of the zoom or the scroll and redraws when it moved
+    /// the pages. The screen of text stays the same, so it does not count as
+    /// a new one for the reading pace.
+    private func moveView(_ change: () throws -> Bool) {
+        do {
+            guard try change() else { return }
+        } catch {
+            NSLog("Mole: cannot zoom %@: %@", book.title, error.localizedDescription)
+            return
+        }
+        if let state = try? session.state() { self.state = state }
+        refreshMarks()
+        revision += 1
+    }
+
+    /// TopOfScreen is where the text on screen starts: the first visible
+    /// character, or, where fixed pages are scrolled, the first character of
+    /// the first line wholly in view.
+    var topOfScreen: Anchor? {
+        let view = CGRect(origin: .zero, size: viewSize)
+        guard state.viewport?.isScrollable == true,
+              let line = visibleParagraphs().lazy.flatMap(\.lines).first(where: { view.contains($0) }),
+              let anchor = (try? session.anchor(at: CGPoint(x: line.minX + 1, y: line.midY))) ?? nil else {
+            return visibleRange?.start
+        }
+        return anchor
+    }
+
+    /// Reports whether the character at anchor is on screen: on a visible
+    /// page and, where fixed pages are larger than the view, wholly in the
+    /// part of them shown.
+    func isOnScreen(_ anchor: Anchor) -> Bool {
+        guard let visibleRange, visibleRange.contains(anchor) else { return false }
+        guard state.viewport?.isScrollable == true else { return true }
+        let character = TextRange(start: anchor, end: Anchor(chapter: anchor.chapter, offset: anchor.offset + 1))
+        let view = CGRect(origin: .zero, size: viewSize)
+        let boxes = (try? session.rects(of: character)) ?? []
+        return !boxes.isEmpty && boxes.allSatisfy { view.contains($0) }
+    }
+
     /// Returns the page, from 1, that holds anchor in the current layout.
     func pageNumber(of anchor: Anchor) -> Int? {
         (try? session.page(of: anchor)).map { $0 + 1 }
@@ -142,20 +233,13 @@ final class ReaderTab: Identifiable {
         if let state = try? session.state() { self.state = state }
         visibleRange = try? session.visibleRange()
         screenShownAt = Date()
-        screenCharacters = visibleRange.flatMap(Self.characters(in:))
+        screenCharacters = state.characters > 0 ? state.characters : nil
         if let screenCharacters, screenCharacters >= 200 {
             averageScreen = averageScreen.map { $0 + 0.2 * (Double(screenCharacters) - $0) } ?? Double(screenCharacters)
         }
         refreshTimeLeft()
         refreshMarks()
         revision += 1
-    }
-
-    /// Returns the characters in range when it lies in one chapter. Offsets
-    /// count non-whitespace characters, the unit of the reading pace.
-    private static func characters(in range: TextRange) -> Int? {
-        guard range.start.chapter == range.end.chapter else { return nil }
-        return range.end.offset - range.start.offset
     }
 
     /// Estimates the time left from the pages left and the average text on

@@ -225,3 +225,31 @@ func TestImportIdentity(t *testing.T) {
 		t.Error("Import of a folder: got nil error")
 	}
 }
+
+func TestImportPDF(t *testing.T) {
+	store := openStore(t)
+	b, err := Import(store, testbook.SamplePDF().Write(t), time.Unix(1_700_000_000, 0))
+	if err != nil {
+		t.Fatalf("Import error: %v", err)
+	}
+	if b.Title != "The Mole in the PDF" || b.Author != "Ada Burrow" || filepath.Ext(b.Path) != ".pdf" {
+		t.Errorf("Import = %q by %q at %s; want the PDF's metadata and a .pdf copy", b.Title, b.Author, b.Path)
+	}
+	if !bytes.HasPrefix(b.Cover, []byte("\x89PNG")) {
+		t.Error("the PDF has no cover drawn from its first page")
+	}
+
+	untitled := testbook.File(t, "Field Notes.pdf", testbook.PDF{Pages: []testbook.PDFPage{{Lines: []string{"Notes."}}}}.Bytes())
+	if b, err := Import(store, untitled, time.Unix(1_700_000_000, 0)); err != nil || b.Title != "Field Notes" {
+		t.Errorf("Import(untitled) = %q, %v; want the file name as title", b.Title, err)
+	}
+
+	locked := testbook.SamplePDF()
+	locked.UserPassword = "secret"
+	if _, err := Import(store, locked.Write(t), time.Unix(1_700_000_000, 0)); !errors.Is(err, bookfile.ErrPassword) {
+		t.Errorf("Import(locked PDF) error = %v, want ErrPassword", err)
+	}
+	if names := booksIn(t, store.BooksDir()); len(names) != 2 {
+		t.Errorf("Books holds %v, want the two PDFs that opened", names)
+	}
+}

@@ -8,6 +8,7 @@ struct CoreError: LocalizedError {
     enum Kind: Int32 {
         case other = 0
         case drm = 1
+        case password = 2
     }
 
     let message: String
@@ -16,6 +17,7 @@ struct CoreError: LocalizedError {
     var errorDescription: String? {
         switch kind {
         case .drm: L10n.text("error.book.drm")
+        case .password: L10n.text("error.book.password")
         case .other: message
         }
     }

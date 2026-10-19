@@ -58,6 +58,7 @@
 
 /* Errors */
 "error.book.drm" = "This book is protected by DRM.";
+"error.book.password" = "This PDF is protected by a password.";
 "error.core.unknown" = "Unknown error in the reading core.";
 "error.library.title" = "Cannot open the library";
 "error.library.notOpened" = "The library was not opened.";
@@ -76,6 +77,7 @@
 "import.failed.title" = "Some files were not added";
 "import.failed.detail" = "Could not read: %@.";
 "import.drm.detail" = "Protected by DRM, which Mole cannot open: %@.";
+"import.password.detail" = "Protected by a password, which Mole cannot open: %@.";
 "import.panel.message" = "Choose books (EPUB, MOBI, FB2 or text), or folders of books.";
 "import.folder.progress" = "Adding books from folders…";
 "import.folder.title" = "Add the books in “%@”";
@@ -160,6 +162,13 @@
 "text.size" = "Size";
 "text.bigger" = "Bigger Text";
 "text.smaller" = "Smaller Text";
+"text.fixed.note" = "This book has fixed pages, as a PDF does: its text keeps the fonts, size, spacing and margins it was printed with. Zoom in to make it larger.";
+"zoom.title" = "Zoom";
+"zoom.in" = "Zoom In";
+"zoom.out" = "Zoom Out";
+"zoom.fitPage" = "Fit Page";
+"zoom.fitWidth" = "Fit Width";
+"zoom.percent" = "%ld%%";
 "text.points" = "%ld pt";
 "text.stroke" = "Weight";
 "text.spread" = "Pages";
@@ -176,7 +185,7 @@
 "pictures.original" = "Original Colors";
 "pictures.night" = "Night";
 "pictures.hidden" = "Hidden";
-"pictures.note" = "Night keeps photographs in their colors and inverts diagrams, so their lines glow and their paper stays dark. Pictures never go brighter than SDR white. Click a picture to see it full size.";
+"pictures.note" = "Night keeps photographs in their colors and inverts diagrams, so their lines glow and their paper stays dark. In a PDF, drawings such as tables and diagrams count as pictures too. Pictures never go brighter than SDR white. Click a picture to see it full size.";
 "picture.title" = "Picture";
 "picture.zoomIn" = "Zoom In";
 "picture.zoomOut" = "Zoom Out";
@@ -327,6 +336,7 @@
 "settings.folders.collections" = "makes collections";
 "settings.text" = "Text";
 "settings.text.note" = "Book's Fonts keeps the fonts that come with the book. Code stays in a monospaced font whatever the font. Mole does not hyphenate words, so justified lines can leave wide gaps between them.";
+"settings.text.fixedNote" = "Books of fixed pages, such as PDFs, keep their own fonts, spacing and margins, and the text size keys zoom them instead.";
 "settings.light" = "Light";
 "settings.light.note" = "Brightness is a share of what the screen can show above SDR white right now. Without EDR the text stops at SDR white.";
 "settings.readAloud" = "Reading aloud";
@@ -338,7 +348,7 @@
 "shortcut.previousPage" = "Previous page";
 "shortcut.startEnd" = "Beginning or end of the book";
 "shortcut.light" = "Brighter or dimmer text";
-"shortcut.textSize" = "Bigger or smaller text";
+"shortcut.textSize" = "Bigger or smaller text, or zoom a PDF";
 "shortcut.edr" = "Turn EDR on or off";
 "shortcut.tint" = "Next text color";
 "shortcut.contents" = "Show or hide the contents";

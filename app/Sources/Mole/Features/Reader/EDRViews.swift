@@ -12,6 +12,8 @@ final class EDRMetalView: NSView, NSMenuItemValidation {
     /// OnHover receives where the pointer moves while no button is down.
     var onHover: ((CGPoint) -> Void)?
     var onScroll: ((NSEvent) -> Void)?
+    /// OnMagnify receives a trackpad pinch.
+    var onMagnify: ((NSEvent) -> Void)?
     /// OnMenu returns the context menu for a point, if any.
     var onMenu: ((CGPoint) -> NSMenu?)?
     var onCopy: (() -> Void)?
@@ -126,6 +128,10 @@ final class EDRMetalView: NSView, NSMenuItemValidation {
 
     override func scrollWheel(with event: NSEvent) {
         onScroll?(event)
+    }
+
+    override func magnify(with event: NSEvent) {
+        onMagnify?(event)
     }
 }
 

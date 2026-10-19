@@ -9,6 +9,72 @@ struct SessionState: Decodable, Equatable {
     var columns = 1
     var chapter = ""
     var progress = 0.0
+    /// Characters counts the non-whitespace characters on the visible pages.
+    var characters = 0
+    /// Fixed is set for a book of fixed pages, such as a PDF: its pages are
+    /// scaled and scrolled rather than reflowed, and the typography does not
+    /// apply.
+    var fixed = false
+    /// Viewport is how the pages of a book of fixed pages sit in the view,
+    /// once it is laid out.
+    var viewport: Viewport?
+
+    init() {}
+
+    // The counts and the fixed pages arrived after the first release of the
+    // core's state.
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        page = try values.decode(Int.self, forKey: .page)
+        lastVisible = try values.decode(Int.self, forKey: .lastVisible)
+        pages = try values.decode(Int.self, forKey: .pages)
+        columns = try values.decode(Int.self, forKey: .columns)
+        chapter = try values.decode(String.self, forKey: .chapter)
+        progress = try values.decode(Double.self, forKey: .progress)
+        characters = try values.decodeIfPresent(Int.self, forKey: .characters) ?? 0
+        fixed = try values.decodeIfPresent(Bool.self, forKey: .fixed) ?? false
+        viewport = try values.decodeIfPresent(Viewport.self, forKey: .viewport)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case page, lastVisible, pages, columns, chapter, progress, characters, fixed, viewport
+    }
+}
+
+/// Fit is how the pages of a book of fixed pages fit the view. The raw
+/// values are the core's.
+enum Fit: Int, Decodable {
+    /// Whole pages in view.
+    case page = 0
+    /// Pages as wide as the view.
+    case width = 1
+    /// Pages at a scale of their own.
+    case scale = 2
+}
+
+/// Viewport is how the visible pages of a book of fixed pages sit in the
+/// view, in view points.
+struct Viewport: Decodable, Equatable {
+    var fit: Fit
+    /// Scale is the view points per point of the page the pages are drawn at.
+    var scale: Double
+    var fitPage: Double
+    var fitWidth: Double
+    /// Width and height are the size of the pages side by side.
+    var width: Double
+    var height: Double
+    /// X and y are how far the view is scrolled into pages larger than it,
+    /// up to maxX and maxY.
+    var x: Double
+    var y: Double
+    var maxX: Double
+    var maxY: Double
+
+    /// Percent is the scale as a percentage of the pages' printed size.
+    var percent: Int { Int((scale * 100).rounded()) }
+
+    /// IsScrollable reports whether the pages are larger than the view.
+    var isScrollable: Bool { maxX > 0.5 || maxY > 0.5 }
 }
 
 /// Chapter is an entry of a book's table of contents, resolved to the page
@@ -78,6 +144,38 @@ final class Session {
     /// Shows page first; it reports whether the page changed.
     @discardableResult
     func go(to page: Int) -> Bool { !isClosed && mole_session_go_to(handle, Int32(page)) == 1 }
+
+    /// Sets how large the pages of a book of fixed pages are drawn, at fit
+    /// or, with .scale, at scale view points per point of the page; it
+    /// reports whether the view changed.
+    @discardableResult
+    func setZoom(_ fit: Fit, scale: Double = 0) throws -> Bool {
+        try checkOpen()
+        let changed = mole_session_set_zoom(handle, Int32(fit.rawValue), scale)
+        guard changed >= 0 else { throw CoreCall.lastError() }
+        return changed == 1
+    }
+
+    /// Zooms the pages of a book of fixed pages in by steps, or out when
+    /// steps is negative; it reports whether the view changed.
+    @discardableResult
+    func zoom(by steps: Int) throws -> Bool {
+        try checkOpen()
+        let changed = mole_session_zoom_step(handle, Int32(steps))
+        guard changed >= 0 else { throw CoreCall.lastError() }
+        return changed == 1
+    }
+
+    /// Scrolls the view within pages of a book of fixed pages larger than
+    /// it, by dx, dy points; a positive dy shows what is further down. It
+    /// reports whether the view moved.
+    @discardableResult
+    func pan(dx: Double, dy: Double) throws -> Bool {
+        try checkOpen()
+        let moved = mole_session_pan(handle, dx, dy)
+        guard moved >= 0 else { throw CoreCall.lastError() }
+        return moved == 1
+    }
 
     func state() throws -> SessionState {
         try checkOpen()

@@ -41,6 +41,8 @@ struct FolderImportResult: Decodable, Sendable {
         let error: String
         /// DRM is true when the file is a book protected by DRM.
         let drm: Bool
+        /// Password is true when the file is a PDF that needs a password.
+        let password: Bool
     }
 
     /// Folder is the id of the watched folder, or 0 when it is not watched.

@@ -1,7 +1,8 @@
 // Package mupdf wraps the parts of MuPDF the reader needs: reflowing a book
-// (EPUB, MOBI, FB2 or HTML) to a page size, rendering pages as coverage
-// masks with color and image layers or as PNG images, the images of a page,
-// positions that survive a relayout and the text of a page.
+// (EPUB, MOBI, FB2 or HTML) to a page size or reading the fixed pages of a
+// PDF, rendering pages as coverage masks with color and image layers or as
+// PNG images, the images of a page, positions that survive a relayout and
+// the text of a page.
 //
 // Every Document has its own MuPDF context, so different documents may be
 // used on different goroutines at the same time.
@@ -96,11 +97,35 @@ func (doc *Document) Close() {
 	doc.d = nil
 }
 
+// Fixed reports whether the document has fixed pages, as a PDF does, rather
+// than text that reflows.
+func (doc *Document) Fixed() bool {
+	return C.md_fixed(doc.d) != 0
+}
+
+// NeedsPassword reports whether the document is encrypted with a password
+// it cannot be read without.
+func (doc *Document) NeedsPassword() bool {
+	return C.md_needs_password(doc.d) != 0
+}
+
+// Language returns the language a PDF declares in its catalog, as a tag
+// such as "en", or "" when it declares none or is not a PDF.
+func (doc *Document) Language() string {
+	buf := make([]byte, 16)
+	if C.md_language(doc.d, cbuf(buf), C.int(len(buf))) == 0 {
+		return ""
+	}
+	return cstr(buf)
+}
+
 // Layout reflows the document to pages of width x height points with a base
 // font size of em points and returns the number of pages. A reflowable
 // document leaves out the blank pages MuPDF makes at the start of a chapter
 // whose first element breaks the page; every method numbers pages without
-// them.
+// them. A document of fixed pages keeps its pages as they are, whatever the
+// size asked for, and makes each page a chapter of its own, so that the
+// pages before one never need to be measured to place a character.
 func (doc *Document) Layout(width, height, em float64) (int, error) {
 	msg := make([]byte, errLen)
 	n := C.md_layout(doc.d, C.float(width), C.float(height), C.float(em), cbuf(msg), errLen)
@@ -108,6 +133,16 @@ func (doc *Document) Layout(width, height, em float64) (int, error) {
 		return 0, fmt.Errorf("layout: %s", cstr(msg))
 	}
 	return int(n), nil
+}
+
+// PageSize returns the width and height of page in points.
+func (doc *Document) PageSize(page int) (width, height float64, err error) {
+	msg := make([]byte, errLen)
+	var w, h C.float
+	if C.md_page_size(doc.d, C.int(page), &w, &h, cbuf(msg), errLen) != 0 {
+		return 0, 0, fmt.Errorf("size of page %d: %s", page, cstr(msg))
+	}
+	return float64(w), float64(h), nil
 }
 
 // Pictures says how RenderLayers draws images.
@@ -130,12 +165,16 @@ const (
 // Height pixels that start at pixel Offset and have rows of Stride pixels.
 // Text has one byte per pixel. Colors and Images have four, RGBA in sRGB
 // with premultiplied alpha, and must be all zero where the page goes;
-// either may be nil to draw nothing into it.
+// either may be nil to draw nothing into it. X and Y place the top left
+// corner of the page, in pixels from the top left of the region: zero draws
+// the page from its corner, and negative values draw a part of a page
+// larger than the region from further in.
 type Layers struct {
 	Text, Colors, Images []byte
 	Offset               int
 	Width, Height        int
 	Stride               int
+	X, Y                 float64
 }
 
 // Drawn reports which of the optional layers a page drew into.
@@ -152,6 +191,12 @@ type Drawn struct {
 // a black page; black, white and gray text is left out of it, for the
 // reader's tint. Images holds the images and shadings on a black page, as
 // pictures says.
+//
+// On a page of a document with fixed pages, vector paths are drawings
+// (rules, tables, diagrams) and go to Images instead, without the fill that
+// paints the page's paper: at night their lightness is inverted as line
+// art's is, so that black lines glow and white fills go dark; in original
+// colors only their grays are inverted; hidden leaves them out.
 func (doc *Document) RenderLayers(page int, scale float64, l Layers, pictures Pictures) (Drawn, error) {
 	if l.Width <= 0 || l.Height <= 0 {
 		return Drawn{}, nil
@@ -180,6 +225,7 @@ func (doc *Document) RenderLayers(page int, scale float64, l Layers, pictures Pi
 		colors: pin(l.Colors, 4*l.Offset),
 		images: pin(l.Images, 4*l.Offset),
 		width:  C.int(l.Width), height: C.int(l.Height), stride: C.int(l.Stride),
+		x: C.float(l.X), y: C.float(l.Y),
 	}
 	msg := make([]byte, errLen)
 	var colors, images C.int

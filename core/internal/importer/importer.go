@@ -1,8 +1,8 @@
 // Package importer adds books to the library: it copies them into the
 // library's Books directory and reads their metadata and cover, falling back
 // to the first page when no cover is declared. It takes the formats of
-// package bookfile: EPUB, MOBI, PRC, FB2 and plain text. It also imports
-// whole folders and keeps watched folders in sync.
+// package bookfile: EPUB, MOBI, PRC, FB2, plain text and PDF. It also
+// imports whole folders and keeps watched folders in sync.
 package importer
 
 import (
@@ -27,7 +27,8 @@ const maxNameLength = 100
 // Import adds the book at path to store and returns the stored book. The
 // library keeps a copy of the file, so the book survives the original being
 // moved or deleted. A book protected by DRM is refused with an error that
-// wraps bookfile.ErrDRM.
+// wraps bookfile.ErrDRM, and a PDF that needs a password with one that
+// wraps bookfile.ErrPassword.
 //
 // The original's path, size and modification time identify it. A file
 // imported before is returned without being read again; one that changed

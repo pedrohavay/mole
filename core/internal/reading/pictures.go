@@ -25,20 +25,16 @@ const MaxPictureSide = 4096
 // PictureAt returns the picture under the point x, y of the view, the one
 // drawn last where pictures overlap. It reports false when there is none.
 func (s *Session) PictureAt(x, y float64) (Picture, bool, error) {
-	if s.pages == 0 {
-		return Picture{}, false, errNoLayout
+	frames, err := s.frames()
+	if err != nil {
+		return Picture{}, false, err
 	}
-	for column := range s.geo.Columns {
-		page := s.page + column
-		if page >= s.pages {
-			break
-		}
-		left, top := s.geo.pageOrigin(column)
-		px, py := x-left, y-top
-		if px < 0 || px > s.geo.ColumnWidth || py < 0 || py > s.geo.PageHeight {
+	for _, f := range frames {
+		px, py, ok := f.contains(x, y)
+		if !ok {
 			continue
 		}
-		boxes, err := s.pageImages(page)
+		boxes, err := s.pageImages(f.page)
 		if err != nil {
 			return Picture{}, false, err
 		}
@@ -46,13 +42,14 @@ func (s *Session) PictureAt(x, y float64) (Picture, bool, error) {
 			// MuPDF clips what spills off the page.
 			b := boxes[i]
 			b.X0, b.Y0 = max(b.X0, 0), max(b.Y0, 0)
-			b.X1, b.Y1 = min(b.X1, s.geo.ColumnWidth), min(b.Y1, s.geo.PageHeight)
+			b.X1, b.Y1 = min(b.X1, f.width), min(b.Y1, f.height)
 			if b.X1-b.X0 < minPicture || b.Y1-b.Y0 < minPicture {
 				continue
 			}
 			if px >= b.X0 && px <= b.X1 && py >= b.Y0 && py <= b.Y1 {
-				rect := Rect{X: left + b.X0, Y: top + b.Y0, Width: b.X1 - b.X0, Height: b.Y1 - b.Y0}
-				return Picture{Page: page, Index: i, Rect: rect}, true, nil
+				z := f.zoom
+				rect := Rect{X: f.x + b.X0*z, Y: f.y + b.Y0*z, Width: (b.X1 - b.X0) * z, Height: (b.Y1 - b.Y0) * z}
+				return Picture{Page: f.page, Index: i, Rect: rect}, true, nil
 			}
 		}
 		return Picture{}, false, nil

@@ -12,6 +12,11 @@ type Geometry struct {
 	Left          float64 // x of the first column
 	Top           float64 // y of the top of the pages, from the top of the view
 	PageHeight    float64
+	// Inset is the top of the view the toolbar covers, and Spread how many
+	// pages side by side were asked for, which a book of fixed pages lays
+	// its pages out by instead of the columns.
+	Inset  float64
+	Spread Spread
 }
 
 // Spread is how many pages the reader shows side by side.
@@ -89,6 +94,7 @@ func NewGeometry(width, height, topInset, scale, fontSize float64, spread Spread
 		Width: width, Height: height, Scale: scale,
 		Columns: columns, ColumnWidth: columnWidth, Gap: gap,
 		Left: (width - total) / 2, Top: top, PageHeight: height - top - bottom,
+		Inset: topInset, Spread: spread,
 	}
 }
 
@@ -112,7 +118,12 @@ func (g Geometry) pageOrigin(column int) (x, y float64) {
 // minColumn is the narrowest column, in points, that still holds a page.
 const minColumn = 120
 
-// usable reports whether the view is large enough to hold a page.
-func (g Geometry) usable() bool {
+// usable reports whether the view is large enough to hold a page, a fixed
+// page when fixed is set.
+func (g Geometry) usable(fixed bool) bool {
+	if fixed {
+		width, height := g.fixedArea()
+		return width >= minColumn && height >= 120 && g.Scale > 0
+	}
 	return g.ColumnWidth >= minColumn && g.PageHeight >= 120 && g.Scale > 0
 }

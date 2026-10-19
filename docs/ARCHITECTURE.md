@@ -51,9 +51,10 @@ and memory rules, `Library` and `Session` are the handle classes, and a
 
 Package `bookfile` knows the formats. It tells a file's format from its
 content first (a ZIP archive, a Palm database of type `BOOKMOBI` or
-`TEXtREAd`, an XML document with a `FictionBook` root) and from its
-extension only when the content has no such mark, which is the case of
-EPUB files that MuPDF would reject anyway and of plain text. The library's
+`TEXtREAd`, an XML document with a `FictionBook` root, a `%PDF-` header)
+and from its extension only when the content has no such mark, which is
+the case of EPUB files that MuPDF would reject anyway, of PDFs with bytes
+before their header and of plain text. The library's
 copy keeps the extension, so MuPDF picks the same handler when the book is
 opened.
 
@@ -73,13 +74,17 @@ Metadata comes from each format's own fields: the OPF package of an EPUB,
 the EXTH records of a MOBI (title, author and cover image), the
 `description` of an FB2 with its `binary` cover, and the `Title:` and
 `Author:` lines of a Project Gutenberg text. MuPDF's title fills a gap, and
-the file name is the last resort. A book without a cover gets its first
-page.
+the file name is the last resort; a PDF's title and author come from MuPDF
+alone, out of its Info dictionary. A book without a cover gets its first
+page, which for a PDF is drawn at its own proportions to fit where a laid
+out page would.
 
 MuPDF ignores the encryption field of a MOBI header and would show the
 encrypted text, so `bookfile` checks it on import and on open and fails
-with `ErrDRM`. The C API reports that kind of failure through
-`mole_last_error_kind`, and the app explains it in the user's language.
+with `ErrDRM`. A PDF that MuPDF cannot read without a password (an owner
+password alone does not stop it) fails with `ErrPassword`. The C API
+reports both kinds of failure through `mole_last_error_kind`, and the app
+explains them in the user's language.
 
 An FB2 with a cover would also show an empty page between the cover and
 the text (see the next section), in the middle of its single chapter, so
@@ -95,6 +100,60 @@ each layout the shim checks the first pages of every chapter of a
 reflowable book and leaves out those that draw nothing; every page number
 in the core counts only the pages shown. CSS cannot do it, because the
 collapsed margin comes from the book's own elements.
+
+## Fixed pages
+
+A PDF has fixed pages: MuPDF does not reflow it, and the font size and the
+typography do not apply. `reading.Session.SetTypography` does nothing to
+such a book, and the C API's state says `fixed`, so the app shows the zoom
+in place of the text settings and turns the text size keys into zoom keys.
+
+Anchors need a scheme that stays cheap however long the PDF is. The shim
+makes each page a chapter of its own (`md_layout`), so an anchor is a page
+and a count of characters on that page, and placing one never measures the
+pages before it. A position is saved as the page, an offset of 0 or more
+and a chapter fraction of 0. Search extracts the text a page at a time, as
+it does chapters; a phrase cut by a page break is not found, and a
+paragraph that runs over one is read aloud as two. A file that claims more
+than 100000 pages is refused, since MuPDF takes the count from the file.
+
+`reading/fixed.go` lays the pages out in the view. Each page keeps its size
+in points, measured the first time it is shown. Two pages go side by side
+when the spread setting allows it and, for the automatic spread, when each
+would be at least 80 percent of the size of one alone; the second page of
+the book stands for the rest, since the first is often a cover of its own
+size. A `Zoom` fits whole pages (the default), fits their width, or draws
+them at a scale, never smaller than whole pages and never larger than 8
+times their size unless fitting them takes more. `StepZoom` goes through
+those two fits and fixed scales from half size to 8 times. Pages larger
+than the view are scrolled by a pan in view points, held within the pages;
+a new zoom keeps the point at the center of the view in place, a page
+turn shows the top of the new page, and going to an anchor scrolls it into
+view a quarter of the way down. The `Viewport` in the state tells the app
+the scale, both fits and how far the view can scroll.
+
+Rendering draws only the part of a page that is in the view: the layers
+start at the page's visible corner, and `md_render_layers` takes the
+position of the page's top left corner, which is negative when the page is
+scrolled. Hit tests, the boxes of a range and the pictures under the
+pointer convert between view points and page points with each page's
+frame (its corner and scale), and boxes scrolled out of the view are left
+out, which is how reading aloud knows to scroll to the next word.
+
+Text goes to the coverage mask as in any book, so it glows with EDR. The
+vector paths of a fixed page are its drawings (rules, tables, diagrams,
+fills), and they go to the picture layer instead, so the picture modes
+apply to them. A fill that covers the page is its paper and is never
+drawn. At night a drawing is turned around as line art is: its lightness
+is inverted with its hue kept, so black lines glow and white or light
+fills go dark. In original colors only its grays are inverted and its hues
+keep their colors, and hidden pictures leave drawings out. A page whose
+paper is dark, as a slide's can be, already suits a black page, so its
+drawings keep their colors. A scanned page is one image, which the night
+mode inverts like any picture of light paper; its text, if it has an
+invisible OCR layer, can still be searched and selected. A scan stored as a
+stencil (a one-bit image mask painted in one color) is drawn like a glyph,
+so its words glow as text.
 
 ## Collections and synced folders
 
@@ -328,7 +387,8 @@ Reading stops when the book closes or another tab is shown.
 ## Positions that survive relayout
 
 MuPDF reflows an EPUB whenever the font size, the page size or the
-typography changes, so page numbers are not stable. MuPDF's own bookmarks
+typography changes, so page numbers are not stable. (A PDF's pages are
+stable, and its anchors are pages; see Fixed pages.) MuPDF's own bookmarks
 for EPUB are not stable across runs either. The core therefore stores a position as a chapter and a
 fraction of that chapter (`library.Position`) and maps it back to a page
 after every layout.

@@ -17,6 +17,9 @@ struct MenuState: Equatable {
     var isBookmarked = false
     var hasHits = false
     var readAloud = ReadAloud.State.idle
+    /// FixedLayout is set while the open book has fixed pages, such as a
+    /// PDF, which the text size items zoom.
+    var fixedLayout = false
 
     @MainActor
     init(_ model: AppModel) {
@@ -32,6 +35,7 @@ struct MenuState: Equatable {
         isBookmarked = model.activeTab?.isBookmarked ?? false
         hasHits = !(model.activeTab?.hits.isEmpty ?? true)
         readAloud = model.readAloud.state
+        fixedLayout = model.activeTab?.isFixedLayout ?? false
     }
 }
 
@@ -89,12 +93,17 @@ struct MoleCommands: Commands {
                 .keyboardShortcut("f", modifiers: [.control, .command])
                 .disabled(state == nil)
             Divider()
-            Button(L10n.text("text.bigger"), action: perform { $0.adjustFontSize(by: 1) })
+            let zooms = state?.fixedLayout == true
+            Button(zooms ? L10n.text("zoom.in") : L10n.text("text.bigger"), action: perform { $0.adjustFontSize(by: 1) })
                 .keyboardShortcut("+")
                 .disabled(state == nil)
-            Button(L10n.text("text.smaller"), action: perform { $0.adjustFontSize(by: -1) })
+            Button(zooms ? L10n.text("zoom.out") : L10n.text("text.smaller"), action: perform { $0.adjustFontSize(by: -1) })
                 .keyboardShortcut("-")
                 .disabled(state == nil)
+            if zooms {
+                Button(L10n.text("zoom.fitPage"), action: perform { $0.activeTab?.zoom(to: .page) })
+                Button(L10n.text("zoom.fitWidth"), action: perform { $0.activeTab?.zoom(to: .width) })
+            }
             Picker(L10n.text("text.spread"), selection: Binding {
                 state?.spread ?? .automatic
             } set: { spread in

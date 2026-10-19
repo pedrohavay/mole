@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 )
 
@@ -90,6 +91,13 @@ func (s *Session) AnchorPage(a Anchor) (int, error) {
 	if s.pages == 0 {
 		return 0, errNoLayout
 	}
+	if s.fixed {
+		// Each page is a chapter.
+		if a.Chapter < 0 || a.Chapter >= s.pages || a.Offset < 0 {
+			return 0, fmt.Errorf("reading: no offset %d in chapter %d", a.Offset, a.Chapter)
+		}
+		return a.Chapter, nil
+	}
 	pages, ok := s.doc.ChapterPages(a.Chapter)
 	if !ok || pages <= 0 || a.Offset < 0 {
 		return 0, fmt.Errorf("reading: no offset %d in chapter %d", a.Offset, a.Chapter)
@@ -116,8 +124,8 @@ func (s *Session) AnchorPage(a Anchor) (int, error) {
 }
 
 // GoToAnchor shows the screen that holds the character at a and makes a the
-// reader's anchor. It reports whether the page changed; it does not when a
-// is already visible.
+// reader's anchor. It reports whether the view changed; it does not when a
+// is already in view. Fixed pages larger than the view scroll to show it.
 func (s *Session) GoToAnchor(a Anchor) (bool, error) {
 	page, err := s.AnchorPage(a)
 	if err != nil {
@@ -125,11 +133,15 @@ func (s *Session) GoToAnchor(a Anchor) (bool, error) {
 	}
 	s.at, s.anchored, s.atPage = a, true, page
 	first := s.spread(page)
-	if first == s.page {
-		return false, nil
+	changed := first != s.page
+	if changed {
+		s.page, s.panY = first, 0
 	}
-	s.page = first
-	return true, nil
+	if s.fixed {
+		moved, err := s.reveal(a)
+		return changed || moved, err
+	}
+	return changed, nil
 }
 
 // VisibleRange returns the text of the visible pages.
@@ -148,28 +160,38 @@ func (s *Session) VisibleRange() (Range, error) {
 	return Range{Start: first.first(), End: last.end()}, nil
 }
 
+// VisibleCharacters returns the number of counted characters on the
+// visible pages.
+func (s *Session) VisibleCharacters() (int, error) {
+	pages, err := s.visiblePages()
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, p := range pages {
+		n += p.text.count
+	}
+	return n, nil
+}
+
 // visiblePage is a visible page and where it is drawn in the view.
 type visiblePage struct {
-	text      *pageText
-	left, top float64
+	text *pageText
+	pageFrame
 }
 
 func (s *Session) visiblePages() ([]visiblePage, error) {
-	if s.pages == 0 {
-		return nil, errNoLayout
+	frames, err := s.frames()
+	if err != nil {
+		return nil, err
 	}
-	var out []visiblePage
-	for column := range s.geo.Columns {
-		page := s.page + column
-		if page >= s.pages {
-			break
-		}
-		t, err := s.pageText(page)
+	out := make([]visiblePage, 0, len(frames))
+	for _, f := range frames {
+		t, err := s.pageText(f.page)
 		if err != nil {
 			return nil, err
 		}
-		left, top := s.geo.pageOrigin(column)
-		out = append(out, visiblePage{text: t, left: left, top: top})
+		out = append(out, visiblePage{text: t, pageFrame: f})
 	}
 	return out, nil
 }
@@ -183,8 +205,8 @@ func (s *Session) HitTest(x, y float64) (Anchor, bool, error) {
 		return Anchor{}, false, err
 	}
 	for _, p := range pages {
-		px, py := x-p.left, y-p.top
-		if px < 0 || px > s.geo.ColumnWidth || py < 0 || py > s.geo.PageHeight {
+		px, py, ok := p.contains(x, y)
+		if !ok {
 			continue
 		}
 		i, ok := p.text.hit(px, py)
@@ -241,7 +263,8 @@ func (t *pageText) hit(x, y float64) (int, bool) {
 }
 
 // RangeRects returns the boxes of the visible part of r in view points, one
-// per line it covers.
+// per line it covers. Lines of fixed pages scrolled out of the view are
+// left out.
 func (s *Session) RangeRects(r Range) ([]Rect, error) {
 	pages, err := s.visiblePages()
 	if err != nil {
@@ -264,7 +287,8 @@ func (s *Session) RangeRects(r Range) ([]Rect, error) {
 			if x0 > x1 {
 				continue
 			}
-			box := Rect{X: p.left + x0, Y: p.top + l.box.Y0, Width: x1 - x0, Height: l.box.Y1 - l.box.Y0}
+			z := p.zoom
+			box := Rect{X: p.x + x0*z, Y: p.y + l.box.Y0*z, Width: (x1 - x0) * z, Height: (l.box.Y1 - l.box.Y0) * z}
 			// The pieces MuPDF cuts a justified line into make one box.
 			if n := len(rects); n > first && sameLine(rects[n-1], box) {
 				last := &rects[n-1]
@@ -276,7 +300,9 @@ func (s *Session) RangeRects(r Range) ([]Rect, error) {
 			rects = append(rects, box)
 		}
 	}
-	return rects, nil
+	return slices.DeleteFunc(rects, func(b Rect) bool {
+		return b.X+b.Width < 0 || b.X > s.geo.Width || b.Y+b.Height < 0 || b.Y > s.geo.Height
+	}), nil
 }
 
 // sameLine reports whether two boxes of a page are on the same line of text.

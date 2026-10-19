@@ -141,6 +141,7 @@ extension AppModel {
             var found = 0
             var failed: [String] = []
             var protected: [String] = []
+            var locked: [String] = []
             for path in folders {
                 do {
                     let result = try await importer.run { try $0.importFolder(at: path, collections: collections, watch: watch) }
@@ -148,6 +149,7 @@ extension AppModel {
                     let names = Self.failedNames(result.failed)
                     failed += names.failed
                     protected += names.protected
+                    locked += names.locked
                     forgetCovers(of: result.updated)
                 } catch {
                     NSLog("Mole: cannot import the folder %@: %@", path, error.localizedDescription)
@@ -156,7 +158,7 @@ extension AppModel {
             }
             importingFolders -= folders.count
             reload()
-            if let problems = importProblems(failed: failed, protected: protected) {
+            if let problems = importProblems(failed: failed, protected: protected, locked: locked) {
                 alert(L10n.text("import.failed.title"), problems)
             } else if found == 0 && !watch {
                 alert(L10n.text("import.folder.none.title"), L10n.text("import.folder.none.detail"))
@@ -180,7 +182,7 @@ extension AppModel {
                 let result = try await importer.run { try $0.sync(folder: id) }
                 forgetCovers(of: result.updated)
                 let names = Self.failedNames(result.failed)
-                failure = importProblems(failed: names.failed, protected: names.protected)
+                failure = importProblems(failed: names.failed, protected: names.protected, locked: names.locked)
             } catch {
                 NSLog("Mole: cannot sync %@: %@", folder.path, error.localizedDescription)
                 failure = error.localizedDescription
@@ -224,19 +226,24 @@ extension AppModel {
     }
 
     /// Returns the names of the files a folder import could not add: the
-    /// books protected by DRM apart from the rest, which are logged.
-    nonisolated static func failedNames(_ failures: [FolderImportResult.Failure]) -> (failed: [String], protected: [String]) {
+    /// books protected by DRM and the PDFs that need a password apart from
+    /// the rest, which are logged.
+    nonisolated static func failedNames(_ failures: [FolderImportResult.Failure])
+        -> (failed: [String], protected: [String], locked: [String]) {
         var failed: [String] = []
         var protected: [String] = []
+        var locked: [String] = []
         for failure in failures {
             let name = (failure.path as NSString).lastPathComponent
             if failure.drm {
                 protected.append(name)
+            } else if failure.password {
+                locked.append(name)
             } else {
                 NSLog("Mole: cannot import %@: %@", failure.path, failure.error)
                 failed.append(name)
             }
         }
-        return (failed, protected)
+        return (failed, protected, locked)
     }
 }
