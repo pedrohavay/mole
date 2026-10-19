@@ -5,6 +5,7 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"image/png"
 	"strings"
 	"testing"
 
@@ -60,8 +61,11 @@ func TestDetect(t *testing.T) {
 		{name: "FB2", path: testbook.FB2{Title: "F", Sections: []string{"<p>Hi.</p>"}, Cover: cover}.Write(t), want: FB2},
 		{name: "Text", path: testbook.File(t, "notes.txt", []byte("Hello.\n")), want: Text},
 		{name: "UTF16Text", path: testbook.File(t, "notes.TXT", []byte("\xFF\xFEH\x00i\x00")), want: Text},
+		{name: "PDF", path: testbook.SamplePDF().Write(t), want: PDF},
+		{name: "PDFWithoutHeader", path: testbook.File(t, "paper.PDF", []byte("junk before %PDF-1.4")), want: PDF},
 		// Content wins over the extension.
 		{name: "FB2NamedText", path: testbook.File(t, "book.txt", []byte(`<?xml version="1.0"?><FictionBook><body/></FictionBook>`)), want: FB2},
+		{name: "PDFNamedText", path: testbook.File(t, "book.txt", testbook.SamplePDF().Bytes()), want: PDF},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -96,6 +100,7 @@ func TestExtension(t *testing.T) {
 		{format: FB2, path: "/d/a.txt", want: ".fb2"},
 		{format: Text, path: "/d/a.text", want: ".text"},
 		{format: Text, path: "/d/README", want: ".txt"},
+		{format: PDF, path: "/d/paper.txt", want: ".pdf"},
 	}
 	for _, tt := range tests {
 		if got := tt.format.Extension(tt.path); got != tt.want {
@@ -114,7 +119,8 @@ func TestFormatOf(t *testing.T) {
 		{name: "/d/a.prc", want: MOBI, wantOK: true},
 		{name: "/d/a.fb2", want: FB2, wantOK: true},
 		{name: "/d/a.text", want: Text, wantOK: true},
-		{name: "/d/a.pdf"},
+		{name: "/d/a.Pdf", want: PDF, wantOK: true},
+		{name: "/d/a.docx"},
 		{name: "/d/README"},
 	}
 	for _, tt := range tests {
@@ -246,5 +252,51 @@ func TestOpen(t *testing.T) {
 				at += i + len(piece)
 			}
 		})
+	}
+}
+
+func TestInspectPDF(t *testing.T) {
+	info, err := Inspect(testbook.SamplePDF().Write(t))
+	if err != nil {
+		t.Fatalf("Inspect error: %v", err)
+	}
+	if info.Format != PDF || info.Title != "The Mole in the PDF" || info.Author != "Ada Burrow" {
+		t.Errorf("Inspect = %v, %q, %q; want PDF, %q, %q", info.Format, info.Title, info.Author, "The Mole in the PDF", "Ada Burrow")
+	}
+	cover, err := png.Decode(bytes.NewReader(info.Cover))
+	if err != nil {
+		t.Fatalf("the cover is not a PNG: %v", err)
+	}
+	// The first page, US Letter, drawn to fit a cover of 300 x 450 pixels.
+	if b := cover.Bounds(); b.Dx() != 300 || b.Dy() < 385 || b.Dy() > 391 {
+		t.Errorf("cover is %v, want 300 pixels wide with the page's proportions", b)
+	}
+
+	untitled, err := Inspect(testbook.PDF{Pages: []testbook.PDFPage{{Lines: []string{"Hi."}}}}.Write(t))
+	if err != nil || untitled.Title != "" || untitled.Author != "" {
+		t.Errorf("Inspect(untitled) = %q, %q, %v; want no title or author, for the file name to stand in", untitled.Title, untitled.Author, err)
+	}
+}
+
+func TestPDFPassword(t *testing.T) {
+	sample := testbook.SamplePDF()
+	sample.UserPassword, sample.OwnerPassword = "mole", "owner"
+	locked := sample.Write(t)
+	if _, err := Inspect(locked); !errors.Is(err, ErrPassword) {
+		t.Errorf("Inspect(locked) error = %v, want ErrPassword", err)
+	}
+	if doc, err := Open(locked, ""); !errors.Is(err, ErrPassword) {
+		if doc != nil {
+			doc.Close()
+		}
+		t.Errorf("Open(locked) error = %v, want ErrPassword", err)
+	}
+
+	// An owner password alone restricts what may be done with the file,
+	// which opens without a password.
+	sample.UserPassword = ""
+	info, err := Inspect(sample.Write(t))
+	if err != nil || info.Title != "The Mole in the PDF" {
+		t.Errorf("Inspect(owner password only) = %q, %v; want the book", info.Title, err)
 	}
 }

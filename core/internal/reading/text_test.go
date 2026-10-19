@@ -206,17 +206,17 @@ func TestHitTestAndRects(t *testing.T) {
 		t.Fatalf("%q is not on the first page", "several")
 	}
 	box := pt.chars[i+2].Box // the second 'v'... any letter inside the word
-	x, y := p.left+(box.X0+box.X1)/2, p.top+(box.Y0+box.Y1)/2
+	x, y := p.x+(box.X0+box.X1)/2, p.y+(box.Y0+box.Y1)/2
 	got, ok, err := s.HitTest(x, y)
 	if err != nil || !ok || got != (Anchor{Chapter: 0, Offset: r.Start.Offset + 2}) {
 		t.Errorf("HitTest(%.1f, %.1f) = %+v, %v, %v; want offset %d", x, y, got, ok, err, r.Start.Offset+2)
 	}
 	line := pt.lines[0]
-	got, ok, err = s.HitTest(p.left+s.geo.ColumnWidth-1, p.top+(line.box.Y0+line.box.Y1)/2)
+	got, ok, err = s.HitTest(p.x+s.geo.ColumnWidth-1, p.y+(line.box.Y0+line.box.Y1)/2)
 	if last := pt.anchor(line.end - 1); err != nil || !ok || got != last {
 		t.Errorf("HitTest right of the first line = %+v, %v, %v; want its last character %+v", got, ok, err, last)
 	}
-	if _, ok, err := s.HitTest(p.left+5, s.geo.Height-1); err != nil || ok {
+	if _, ok, err := s.HitTest(p.x+5, s.geo.Height-1); err != nil || ok {
 		t.Errorf("HitTest below the pages = %v, %v; want no text", ok, err)
 	}
 
@@ -302,7 +302,7 @@ func TestAnchorsInBook(t *testing.T) {
 	}
 	word := wordAt(p.text, i)
 	box := p.text.chars[i].Box
-	x, y := p.left+(box.X0+box.X1)/2, p.top+(box.Y0+box.Y1)/2
+	x, y := p.x+(box.X0+box.X1)/2, p.y+(box.Y0+box.Y1)/2
 	s.forgetText() // time a hit test right after a layout
 	start := time.Now()
 	a, ok, err := s.HitTest(x, y)

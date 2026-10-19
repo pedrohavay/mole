@@ -19,7 +19,8 @@
 // threads of their own. mole_last_error and mole_free work on any thread.
 //
 // Places in the text are JSON anchors, {"chapter":int,"offset":int}, which do
-// not depend on the layout (see reading.Anchor), and ranges of text are
+// not depend on the layout (see reading.Anchor); in a book of fixed pages,
+// such as a PDF, each page is a chapter. Ranges of text are
 // {"start":anchor,"end":anchor} with the end exclusive. Rectangles are
 // {"x":float,"y":float,"width":float,"height":float} in points of the view
 // given to mole_session_layout, from its top left corner.
@@ -168,8 +169,9 @@ var (
 // Kinds of failure, which mole_last_error_kind reports so that the app can
 // explain them in the user's language.
 const (
-	errorKindOther = 0 // any failure without a kind of its own
-	errorKindDRM   = 1 // the book is protected by DRM
+	errorKindOther    = 0 // any failure without a kind of its own
+	errorKindDRM      = 1 // the book is protected by DRM
+	errorKindPassword = 2 // the PDF needs a password
 )
 
 // fail records err as the last error of the calling thread. Exported
@@ -177,8 +179,11 @@ const (
 // errors.
 func fail(err error) {
 	kind := errorKindOther
-	if errors.Is(err, bookfile.ErrDRM) {
+	switch {
+	case errors.Is(err, bookfile.ErrDRM):
 		kind = errorKindDRM
+	case errors.Is(err, bookfile.ErrPassword):
+		kind = errorKindPassword
 	}
 	msg := C.CString(err.Error())
 	defer C.free(unsafe.Pointer(msg))
@@ -196,7 +201,8 @@ func mole_last_error() *C.char {
 }
 
 // mole_last_error_kind returns the kind of the last failure on the calling
-// thread: 1 when the book is protected by DRM, 0 for every other failure.
+// thread: 1 when the book is protected by DRM, 2 when a PDF needs a
+// password, 0 for every other failure.
 //
 //export mole_last_error_kind
 func mole_last_error_kind() C.int {
@@ -306,9 +312,9 @@ func mole_library_cover(lib, bookID C.int64_t, length *C.int64_t) unsafe.Pointer
 	return C.CBytes(b.Cover)
 }
 
-// mole_library_import adds a book (EPUB, MOBI, PRC, FB2 or plain text) and
-// returns its ID, or 0; a book protected by DRM fails with the DRM kind of
-// error. The library keeps a copy of the file in a Books directory next to
+// mole_library_import adds a book (EPUB, MOBI, PRC, FB2, plain text or PDF)
+// and returns its ID, or 0; a book protected by DRM fails with the DRM kind
+// of error and a PDF that needs a password with the password kind. The library keeps a copy of the file in a Books directory next to
 // its database. A file is known by its path, size and modification time:
 // importing it again returns the same book without reading it, and a
 // changed or renamed file updates its book rather than adding another. It
@@ -525,7 +531,8 @@ func mole_library_remove_annotation(lib, id C.int64_t) C.int {
 // Reading sessions.
 
 // mole_session_open opens a book at the place it was left. A book protected
-// by DRM fails with the DRM kind of error.
+// by DRM fails with the DRM kind of error, and a PDF that needs a password
+// with the password kind.
 //
 //export mole_session_open
 func mole_session_open(lib, bookID C.int64_t) C.int64_t {
@@ -574,7 +581,9 @@ type typographyJSON struct {
 // font size, spread pages side by side (0 automatic, 1 single, 2 double) and
 // the text set in typography, a JSON object of the form
 // {"font":string,"lineSpacing":int,"margins":int,"justify":bool}, keeping the
-// reader at the same place.
+// reader at the same place. A book of fixed pages (see mole_session_state) is
+// not reflowed: its pages are scaled to the view as mole_session_set_zoom
+// says, and the font size and the typography do not apply.
 //
 //export mole_session_layout
 func mole_session_layout(s C.int64_t, width, height, topInset, scale, fontSize C.double, spread C.int,
@@ -658,8 +667,37 @@ type stateJSON struct {
 	Columns     int     `json:"columns"`
 	Chapter     string  `json:"chapter"`
 	Progress    float64 `json:"progress"`
+	Characters  int     `json:"characters"` // counted characters on the visible pages
+	// Fixed is set for a book of fixed pages, such as a PDF, which has a
+	// viewport once it is laid out.
+	Fixed    bool          `json:"fixed"`
+	Viewport *viewportJSON `json:"viewport,omitempty"`
 }
 
+// viewportJSON is how the visible pages of a book of fixed pages sit in the
+// view, in view points.
+type viewportJSON struct {
+	Fit      int     `json:"fit"`      // 0 whole pages, 1 their width, 2 scale
+	Scale    float64 `json:"scale"`    // view points per point of the page
+	FitPage  float64 `json:"fitPage"`  // the scale of fit 0
+	FitWidth float64 `json:"fitWidth"` // the scale of fit 1
+	Width    float64 `json:"width"`    // the pages side by side
+	Height   float64 `json:"height"`
+	X        float64 `json:"x"` // how far the view is scrolled into them
+	Y        float64 `json:"y"`
+	MaxX     float64 `json:"maxX"`
+	MaxY     float64 `json:"maxY"`
+}
+
+// mole_session_state returns where the reader is, as JSON {"page",
+// "lastVisible","pages","columns","chapter","progress","characters","fixed",
+// "viewport"}: the visible pages, counting from 0, the page count, the
+// pages side by side, the title of the chapter, how far through the book
+// the screen is, from 0 to 1, and the characters on screen. fixed is true
+// for a book of fixed pages, which also has a viewport once laid out:
+// {"fit","scale","fitPage","fitWidth","width","height","x","y","maxX","maxY"}.
+// The caller frees the result with mole_free.
+//
 //export mole_session_state
 func mole_session_state(s C.int64_t) *C.char {
 	ss, ok := sessions.get(int64(s))
@@ -668,10 +706,87 @@ func mole_session_state(s C.int64_t) *C.char {
 		return nil
 	}
 	r := ss.book.Reading()
-	return jsonString(stateJSON{
+	out := stateJSON{
 		Page: r.Page(), LastVisible: r.LastVisible(), Pages: r.Pages(),
 		Columns: r.Geometry().Columns, Chapter: r.ChapterTitle(), Progress: r.Progress(),
-	})
+		Fixed: r.FixedLayout(),
+	}
+	if r.Pages() > 0 {
+		// Only the estimate of the time left reads the count, so a page
+		// whose text cannot be read counts none rather than failing.
+		out.Characters, _ = r.VisibleCharacters()
+	}
+	if out.Fixed && r.Pages() > 0 {
+		vp, err := r.Viewport()
+		if err != nil {
+			fail(err)
+			return nil
+		}
+		out.Viewport = &viewportJSON{
+			Fit: int(vp.Zoom.Fit), Scale: vp.Scale, FitPage: vp.FitPage, FitWidth: vp.FitWidth,
+			Width: vp.Width, Height: vp.Height, X: vp.X, Y: vp.Y, MaxX: vp.MaxX, MaxY: vp.MaxY,
+		}
+	}
+	return jsonString(out)
+}
+
+// changedOrFailed returns 1 if changed, 0 if not and -1 for err.
+func changedOrFailed(changed bool, err error) C.int {
+	switch {
+	case err != nil:
+		fail(err)
+		return -1
+	case changed:
+		return 1
+	}
+	return 0
+}
+
+// mole_session_set_zoom sets how large the pages of a book of fixed pages
+// are drawn: fit 0 fits whole pages in the view, 1 makes them as wide as the
+// view, and 2 draws them at scale view points per point of the page. The
+// point at the center of the view stays there. It returns 1 if the view
+// changed, which calls for a new render, 0 if not (always for a reflowable
+// book) and -1 on error.
+//
+//export mole_session_set_zoom
+func mole_session_set_zoom(s C.int64_t, fit C.int, scale C.double) C.int {
+	ss, ok := sessions.get(int64(s))
+	if !ok {
+		fail(errBadHandle)
+		return -1
+	}
+	return changedOrFailed(ss.book.Reading().SetZoom(reading.Zoom{Fit: reading.Fit(fit), Scale: float64(scale)}))
+}
+
+// mole_session_zoom_step zooms the pages of a book of fixed pages in by
+// steps, or out when steps is negative, through the scales that fit whole
+// pages and their width and fixed scales from half size to 8 times. It
+// returns 1 if the view changed, 0 if not and -1 on error.
+//
+//export mole_session_zoom_step
+func mole_session_zoom_step(s C.int64_t, steps C.int) C.int {
+	ss, ok := sessions.get(int64(s))
+	if !ok {
+		fail(errBadHandle)
+		return -1
+	}
+	return changedOrFailed(ss.book.Reading().StepZoom(int(steps)))
+}
+
+// mole_session_pan scrolls the view by dx, dy points within the pages of a
+// book of fixed pages that are larger than it, up to their edges; a
+// positive dy shows what is further down. It returns 1 if the view moved, 0
+// if not and -1 on error.
+//
+//export mole_session_pan
+func mole_session_pan(s C.int64_t, dx, dy C.double) C.int {
+	ss, ok := sessions.get(int64(s))
+	if !ok {
+		fail(errBadHandle)
+		return -1
+	}
+	return changedOrFailed(ss.book.Reading().Pan(float64(dx), float64(dy)))
 }
 
 type chapterJSON struct {
@@ -1098,8 +1213,9 @@ func mole_session_paragraphs(s C.int64_t, textRange *C.char, limit C.int64_t) *C
 }
 
 // mole_session_go_to_anchor shows the screen that holds an anchor and
-// returns 1 if the page changed. It returns 0 when the anchor is already
-// visible, and also on error. The new position is saved.
+// returns 1 if the view changed: the page, or the part of fixed pages in
+// view. It returns 0 when the anchor is already in view, and also on error.
+// The new position is saved.
 //
 //export mole_session_go_to_anchor
 func mole_session_go_to_anchor(s C.int64_t, anchor *C.char) C.int {

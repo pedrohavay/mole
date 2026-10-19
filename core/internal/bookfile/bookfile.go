@@ -1,7 +1,7 @@
 // Package bookfile reads the kinds of book files Mole supports: EPUB, MOBI
-// (with PRC, its PalmDOC ancestor), FictionBook 2 and plain text. It tells
-// a file's format from its content and extension, reads its title, author
-// and cover, and opens it with MuPDF for layout.
+// (with PRC, its PalmDOC ancestor), FictionBook 2, plain text and PDF. It
+// tells a file's format from its content and extension, reads its title,
+// author and cover, and opens it with MuPDF for layout.
 package bookfile
 
 import (
@@ -27,6 +27,7 @@ const (
 	MOBI        // Mobipocket, and PalmDOC (PRC) books
 	FB2         // FictionBook 2
 	Text        // plain text
+	PDF         // a document of fixed pages
 )
 
 // extensions lists the file extensions of each format, the usual one first.
@@ -35,6 +36,7 @@ var extensions = map[Format][]string{
 	MOBI: {".mobi", ".prc"},
 	FB2:  {".fb2"},
 	Text: {".txt", ".text"},
+	PDF:  {".pdf"},
 }
 
 // Extension returns the extension, with its dot, for a copy of the file at
@@ -55,7 +57,7 @@ func (f Format) Extension(path string) string {
 // what a file really is.
 func FormatOf(name string) (Format, bool) {
 	ext := strings.ToLower(filepath.Ext(name))
-	for _, f := range []Format{EPUB, MOBI, FB2, Text} {
+	for _, f := range []Format{EPUB, MOBI, FB2, Text, PDF} {
 		if slices.Contains(extensions[f], ext) {
 			return f, true
 		}
@@ -69,16 +71,20 @@ var (
 	ErrUnsupported = errors.New("not a book in a format Mole reads")
 	// ErrDRM is returned for a book whose text is encrypted by DRM.
 	ErrDRM = errors.New("this book is protected by DRM")
+	// ErrPassword is returned for a PDF that cannot be read without a
+	// password.
+	ErrPassword = errors.New("this PDF is protected by a password")
 )
 
 // sniffSize is how much of the start of a file Detect looks at.
 const sniffSize = 4096
 
 // Detect returns the format of the book at path. Content decides first: a
-// ZIP archive is an EPUB, a Palm database of a book is a MOBI and an XML
-// document with a FictionBook element is an FB2. Files with no such mark
-// are an EPUB or plain text by their extension, and text must not look
-// binary. It returns ErrUnsupported for anything else.
+// ZIP archive is an EPUB, a Palm database of a book is a MOBI, an XML
+// document with a FictionBook element is an FB2 and a file that starts with
+// a PDF header is a PDF. Files with no such mark are an EPUB, a PDF or plain
+// text by their extension, and text must not look binary. It returns
+// ErrUnsupported for anything else.
 func Detect(path string) (Format, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -106,10 +112,16 @@ func detect(head []byte, ext string) (Format, bool) {
 		return MOBI, true
 	case isFictionBook(head):
 		return FB2, true
+	case bytes.HasPrefix(head, []byte("%PDF-")):
+		return PDF, true
 	}
 	switch strings.ToLower(ext) {
 	case ".epub":
 		return EPUB, true
+	case ".pdf":
+		// A PDF may have bytes before its header, or a damaged one, which
+		// MuPDF repairs when it can.
+		return PDF, true
 	case ".txt", ".text":
 		return Text, looksLikeText(head)
 	}
@@ -146,8 +158,10 @@ type Info struct {
 // Inspect reads the format, the metadata and the cover of the book at
 // path. A book that is not an EPUB is also opened with MuPDF, which checks
 // that it can be read and supplies a title the format's own metadata
-// lacks. It returns ErrUnsupported for a file in no known format and ErrDRM
-// for a protected book.
+// lacks; a PDF's title and author come from MuPDF alone, and its cover is
+// its first page. It returns ErrUnsupported for a file in no known format,
+// ErrDRM for a book protected by DRM and ErrPassword for a PDF that needs a
+// password.
 func Inspect(path string) (Info, error) {
 	format, err := Detect(path)
 	if err != nil {
@@ -206,9 +220,10 @@ var formatCSS = map[Format]string{
 }
 
 // Open opens the book at path with MuPDF. userCSS, when not empty, is
-// applied over the book's own styles. Plain text is turned into HTML with
-// paragraphs first (see textHTML). It returns ErrDRM for a protected book;
-// a file of no known format is left to MuPDF.
+// applied over the book's own styles; a PDF has none to apply it to. Plain
+// text is turned into HTML with paragraphs first (see textHTML). It returns
+// ErrDRM for a book protected by DRM and ErrPassword for a PDF that needs a
+// password; a file of no known format is left to MuPDF.
 func Open(path, userCSS string) (*mupdf.Document, error) {
 	format, err := Detect(path)
 	if err != nil && !errors.Is(err, ErrUnsupported) {
@@ -231,7 +246,15 @@ func Open(path, userCSS string) (*mupdf.Document, error) {
 		}
 		return doc, nil
 	}
-	return mupdf.Open(path, userCSS)
+	doc, err := mupdf.Open(path, userCSS)
+	if err != nil {
+		return nil, err
+	}
+	if doc.NeedsPassword() {
+		doc.Close()
+		return nil, fmt.Errorf("%s: %w", filepath.Base(path), ErrPassword)
+	}
+	return doc, nil
 }
 
 // firstPage renders the first page of the book at path, as for a cover.
@@ -244,13 +267,33 @@ func firstPage(path string) ([]byte, error) {
 	return renderFirstPage(doc)
 }
 
+// Covers made from a first page fit in coverWidth x coverHeight points,
+// drawn at coverScale pixels per point.
+const (
+	coverWidth  = 600
+	coverHeight = 900
+	coverScale  = 0.5
+)
+
 // renderFirstPage renders the first page of doc, laid out at a cover's
-// proportions, as PNG.
+// proportions, as PNG. A fixed page keeps its own proportions and is drawn
+// to fit where a laid out page would.
 func renderFirstPage(doc *mupdf.Document) ([]byte, error) {
-	if _, err := doc.Layout(600, 900, 16); err != nil {
+	if _, err := doc.Layout(coverWidth, coverHeight, 16); err != nil {
 		return nil, err
 	}
-	return doc.RenderPNG(0, 0.5)
+	scale := coverScale
+	if doc.Fixed() {
+		w, h, err := doc.PageSize(0)
+		if err != nil {
+			return nil, err
+		}
+		if w <= 0 || h <= 0 {
+			return nil, errors.New("the first page has no area")
+		}
+		scale *= min(coverWidth/w, coverHeight/h)
+	}
+	return doc.RenderPNG(0, scale)
 }
 
 // clean returns s with runs of whitespace collapsed into single spaces and

@@ -52,7 +52,7 @@ func TestMargins(t *testing.T) {
 		var prev Geometry
 		for i, m := range order {
 			g := NewGeometry(width, 874, 52, 2, 21, SpreadSingle, m)
-			if !g.usable() {
+			if !g.usable(false) {
 				t.Fatalf("NewGeometry(%v wide, margins %d) = %+v, want a usable page", width, m, g)
 			}
 			if i > 0 && !(g.ColumnWidth < prev.ColumnWidth && g.Left > prev.Left && g.Top > prev.Top && g.PageHeight < prev.PageHeight) {

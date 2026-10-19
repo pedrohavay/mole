@@ -132,6 +132,17 @@ func (t *pageText) inside(i int, r Range) bool {
 	return r.Start.Compare(a) < 0 && a.Compare(r.End) < 0
 }
 
+// box returns the box of the counted character at offset on the page, in
+// its points, and reports whether the page holds it.
+func (t *pageText) box(offset int) (mupdf.Rect, bool) {
+	for i, c := range t.chars {
+		if t.next[i] == offset && counted(c.Rune) {
+			return c.Box, true
+		}
+	}
+	return mupdf.Rect{}, false
+}
+
 // first returns the anchor of the first counted character on the page, or
 // the place after the page's text when it has none.
 func (t *pageText) first() Anchor {

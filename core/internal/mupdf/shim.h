@@ -24,11 +24,27 @@ md_doc *md_open_buffer(const unsigned char *data, size_t len, const char *magic,
 // md_close releases the document and its context.
 void md_close(md_doc *d);
 
+// md_fixed returns 1 for a document of fixed pages, such as a PDF, and 0 for
+// a reflowable one.
+int md_fixed(md_doc *d);
+
+// md_needs_password returns 1 when the document is encrypted and cannot be
+// read without a password.
+int md_needs_password(md_doc *d);
+
+// md_language copies the language a PDF declares, as a language tag such as
+// "en", into buf; it returns 0 when there is none.
+int md_language(md_doc *d, char *buf, int buflen);
+
 // md_layout reflows the document to pages of width x height points with a
 // base font size of em points. It returns the page count, or -1 on error.
 // Pages are those shown, here and in every other function: MuPDF's pages
-// less the blank pages that open a chapter of a reflowable document.
+// less the blank pages that open a chapter of a reflowable document. A
+// document of fixed pages keeps its pages, and each of them is a chapter.
 int md_layout(md_doc *d, float width, float height, float em, char *err, int errlen);
+
+// md_page_size reports the size of a page in points. It returns 0 on success.
+int md_page_size(md_doc *d, int page, float *width, float *height, char *err, int errlen);
 
 // MD_PICTURES_* say how md_render_layers draws images.
 enum {
@@ -41,12 +57,15 @@ enum {
 // caller. All are width x height pixels with rows of stride pixels: text has
 // one byte per pixel, colors and images four, RGBA in device RGB (sRGB) with
 // premultiplied alpha. colors and images must be all zero (transparent) on
-// entry; either may be NULL to draw nothing into it.
+// entry; either may be NULL to draw nothing into it. x and y place the top
+// left corner of the page, in pixels from the top left of the buffers: 0 to
+// draw the page from its corner, less to draw a part of it further in.
 typedef struct {
     unsigned char *text;
     unsigned char *colors;
     unsigned char *images;
     int width, height, stride;
+    float x, y;
 } md_layers;
 
 // md_render_layers draws a page into layers. text receives the coverage of
@@ -55,7 +74,10 @@ typedef struct {
 // backgrounds are left out. colors receives the color of text and lines
 // drawn in a hue, lightened for a black page where it is dark; black, white
 // and gray are left out, for the reader's tint. images receives the images
-// and shadings on a black page as pictures (MD_PICTURES_*) says.
+// and shadings on a black page as pictures (MD_PICTURES_*) says. On a page
+// of fixed layout, vector paths are drawings and go to images instead of
+// text, turned around for a black page as line art is, without the fill
+// that paints the page's paper.
 // *has_colors and *has_images are set to 1 when the page draws into colors
 // or images. It returns 0 on success.
 int md_render_layers(md_doc *d, int page, float scale, const md_layers *layers, int pictures, int *has_colors,

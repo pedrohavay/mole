@@ -1,8 +1,9 @@
 // Package reading lays out a book with MuPDF and draws the visible pages into
 // a coverage mask, with layers for the hues of the text and for the
-// pictures, for an EDR renderer. It also locates text independently of the
-// layout (Anchor), for selection, highlights and search, and finds the
-// pictures on screen. It has no user interface code.
+// pictures, for an EDR renderer. A book of fixed pages, such as a PDF, is
+// scaled and scrolled instead of reflowed. It also locates text
+// independently of the layout (Anchor), for selection, highlights and
+// search, and finds the pictures on screen. It has no user interface code.
 package reading
 
 import (
@@ -46,7 +47,8 @@ type Session struct {
 	outline    []mupdf.OutlineItem
 	chapters   []Chapter
 	start      Location // where to go on the first layout
-	geo        Geometry
+	asked      Geometry // the geometry of the last Layout
+	geo        Geometry // the geometry in use: asked, with the columns of fixed pages
 	fontSize   float64
 	pages      int
 	page       int // first visible page, a multiple of the number of columns
@@ -57,6 +59,14 @@ type Session struct {
 	drawn      mupdf.Drawn // which of colors and images the last render drew into
 	stride     int
 	pictures   map[int][]mupdf.Rect // where the pages measured in this layout draw images
+
+	// A book of fixed pages (see FixedLayout) keeps the size of its pages,
+	// measured as they are first shown, and a zoom, and the view scrolls
+	// within pages larger than it by a pan, in view points.
+	fixed      bool
+	sizes      []pageSize
+	zoom       Zoom
+	panX, panY float64
 
 	// at is the anchor the reader is at. Only moving (Turn, GoTo and
 	// GoToAnchor) changes it, and every layout shows it, so going back and
@@ -82,7 +92,7 @@ func Open(path string, start Location) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Session{path: path, doc: doc, outline: outline, start: start}
+	s := &Session{path: path, doc: doc, outline: outline, start: start, fixed: doc.Fixed()}
 	if start.Offset >= 0 {
 		s.at, s.anchored = Anchor{Chapter: start.Chapter, Offset: start.Offset}, true
 	}
@@ -100,15 +110,19 @@ func (s *Session) Close() {
 }
 
 // Language returns the language the book declares, normally a BCP 47 tag
-// such as "en" or "pt-BR": an EPUB's dc:language, or the language in the
-// metadata of other documents. It returns "" when the book declares none.
+// such as "en" or "pt-BR": an EPUB's dc:language, a PDF's /Lang, or the
+// language in the metadata of other documents. It returns "" when the book
+// declares none.
 func (s *Session) Language() string {
 	// A file that is not an EPUB has no package document to read; MuPDF's
 	// metadata covers it.
 	if language, err := epub.Language(s.path); err == nil && language != "" {
 		return language
 	}
-	return s.doc.Metadata(mupdf.MetaLanguage)
+	if language := s.doc.Metadata(mupdf.MetaLanguage); language != "" {
+		return language
+	}
+	return s.doc.Language()
 }
 
 // openDocument opens the book at path with the user style sheet of t and
@@ -128,8 +142,12 @@ func openDocument(path string, t Typography) (*mupdf.Document, []mupdf.OutlineIt
 
 // SetTypography sets the text in t. The book has no layout until the next
 // Layout, which lays it out again showing the same text, also when the
-// geometry and the font size stay the same.
+// geometry and the font size stay the same. A book of fixed pages keeps its
+// own typography, so t does nothing to it.
 func (s *Session) SetTypography(t Typography) error {
+	if s.fixed {
+		return nil
+	}
 	if t.css() == s.typography.css() {
 		s.typography = t
 		return nil
@@ -151,9 +169,11 @@ func (s *Session) Typography() Typography { return s.typography }
 
 // Layout reflows the book for geo and fontSize and shows the screen that
 // holds the reader's anchor, so that the same text stays in view. It does
-// nothing when neither changed.
+// nothing when neither changed. A book of fixed pages is not reflowed: its
+// pages are scaled to the view (see SetZoom), as many side by side as
+// geo.Spread asks for and the view allows, and fontSize does not apply.
 func (s *Session) Layout(geo Geometry, fontSize float64) error {
-	if s.pages > 0 && geo == s.geo && fontSize == s.fontSize {
+	if s.pages > 0 && geo == s.asked && fontSize == s.fontSize {
 		return nil
 	}
 	return s.layout(geo, fontSize)
@@ -163,21 +183,37 @@ func (s *Session) Layout(geo Geometry, fontSize float64) error {
 // for a page leaves the layout as it was; any other failure leaves the book
 // without one.
 func (s *Session) layout(geo Geometry, fontSize float64) error {
-	if !geo.usable() {
+	if !geo.usable(s.fixed) {
 		return errors.New("reading: view too small for a page")
 	}
-	s.pages = 0
-	pages, err := s.doc.Layout(geo.ColumnWidth, geo.PageHeight, fontSize)
-	if err != nil {
-		return err
+	// Fixed pages are counted once: their text and pictures stay where
+	// they are in any view.
+	if !s.fixed || s.pages == 0 {
+		s.pages = 0
+		pages, err := s.doc.Layout(geo.ColumnWidth, geo.PageHeight, fontSize)
+		if err != nil {
+			return err
+		}
+		if pages == 0 {
+			return errors.New("reading: the book has no pages")
+		}
+		s.forgetText()
+		s.pictures = map[int][]mupdf.Rect{}
+		if s.fixed {
+			s.sizes = make([]pageSize, pages)
+		}
+		s.pages = pages
+		s.resolveChapters()
 	}
-	if pages == 0 {
-		return errors.New("reading: the book has no pages")
+	s.asked, s.geo, s.fontSize = geo, geo, fontSize
+	if s.fixed {
+		columns, err := s.fixedColumns()
+		if err != nil {
+			s.pages = 0
+			return err
+		}
+		s.geo.Columns = columns
 	}
-	s.geo, s.fontSize, s.pages = geo, fontSize, pages
-	s.forgetText()
-	s.pictures = map[int][]mupdf.Rect{}
-	s.resolveChapters()
 	width, height := geo.PixelSize()
 	s.stride = (width + 63) &^ 63
 	s.mask = make([]byte, s.stride*height)
@@ -284,14 +320,15 @@ func (s *Session) Turn(delta int) (bool, error) {
 }
 
 // GoTo shows the screen that holds page and reports whether the page
-// changed. The reader's anchor moves to the start of page.
+// changed. The reader's anchor moves to the start of page. Fixed pages
+// larger than the view show their top.
 func (s *Session) GoTo(page int) (bool, error) {
 	page = max(0, min(page, s.pages-1))
 	first := s.spread(page)
 	if first == s.page {
 		return false, nil
 	}
-	s.page = first
+	s.page, s.panY = first, 0
 	return true, s.anchorAt(page)
 }
 
@@ -341,26 +378,33 @@ func (s *Session) Render() (mask []byte, stride int, err error) {
 	s.colors = blankLayer(s.colors, 4*len(s.mask), s.style.BookColors, s.drawn.Colors)
 	s.images = blankLayer(s.images, 4*len(s.mask), s.style.Pictures != mupdf.PicturesHidden, s.drawn.Images)
 	s.drawn = mupdf.Drawn{}
+	frames, err := s.frames()
+	if err != nil {
+		return nil, 0, err
+	}
 	g := s.geo
 	width, height := g.PixelSize()
-	y := int(math.Round(g.Top * g.Scale))
-	for column := range g.Columns {
-		page := s.page + column
-		if page >= s.pages {
-			break
+	for _, f := range frames {
+		// The page in pixels, and the part of it in the view.
+		x0, y0 := int(math.Round(f.x*g.Scale)), int(math.Round(f.y*g.Scale))
+		x1 := x0 + int(math.Ceil(f.width*f.zoom*g.Scale))
+		y1 := y0 + int(math.Ceil(f.height*f.zoom*g.Scale))
+		left, top := max(0, x0), max(0, y0)
+		right, bottom := min(width, x1), min(height, y1)
+		if right <= left || bottom <= top {
+			continue
 		}
-		x := int(math.Round((g.Left + float64(column)*(g.ColumnWidth+g.Gap)) * g.Scale))
 		layers := mupdf.Layers{
 			Text: s.mask, Colors: s.colors, Images: s.images,
-			Offset: y*s.stride + x, Stride: s.stride,
-			Width:  min(int(math.Ceil(g.ColumnWidth*g.Scale)), width-x),
-			Height: min(int(math.Ceil(g.PageHeight*g.Scale)), height-y),
+			Offset: top*s.stride + left, Stride: s.stride,
+			Width: right - left, Height: bottom - top,
+			X: float64(x0 - left), Y: float64(y0 - top),
 		}
-		drawn, err := s.doc.RenderLayers(page, g.Scale, layers, s.style.Pictures)
+		drawn, err := s.doc.RenderLayers(f.page, f.zoom*g.Scale, layers, s.style.Pictures)
 		if err != nil {
 			// A page may have drawn part of itself before failing.
 			s.drawn = mupdf.Drawn{Colors: true, Images: true}
-			return nil, 0, fmt.Errorf("render page %d: %w", page, err)
+			return nil, 0, fmt.Errorf("render page %d: %w", f.page, err)
 		}
 		s.drawn.Colors = s.drawn.Colors || drawn.Colors
 		s.drawn.Images = s.drawn.Images || drawn.Images
